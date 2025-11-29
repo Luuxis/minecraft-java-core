@@ -14,7 +14,7 @@ const defaultProperties = {
     icon: path.join(__dirname, '../../../assets/icons/Microsoft.png')
 }
 
-module.exports = async function (url: string) {
+module.exports = async function (url: string, redirect_uri: string = "https://login.live.com/oauth20_desktop.srf") {
     await new Promise((resolve: any) => {
         //@ts-ignore
         nw.Window.get().cookies.getAll({ domain: "live.com" }, async (cookies) => {
@@ -33,7 +33,7 @@ module.exports = async function (url: string) {
             let interval = null;
             let code;
             interval = setInterval(() => {
-                if (Window.window.document.location.href.startsWith("https://login.live.com/oauth20_desktop.srf")) {
+                if (Window.window.document.location.href.startsWith(redirect_uri)) {
                     clearInterval(interval);
                     try {
                         code = Window.window.document.location.href.split("code=")[1].split("&")[0];

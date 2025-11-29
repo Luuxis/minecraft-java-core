@@ -14,7 +14,7 @@ const defaultProperties = {
     icon: path.join(__dirname, '../../../assets/icons', `Microsoft.${(process.platform === 'win32') ? 'ico' : 'png'}`),
 }
 
-module.exports = async function (url: string) {
+module.exports = async function (url: string, redirect_uri: string = "https://login.live.com/oauth20_desktop.srf") {
     await new Promise((resolve: any) => {
         app.whenReady().then(() => {
             session.defaultSession.cookies.get({ domain: 'live.com' }).then((cookies: any) => {
@@ -40,7 +40,7 @@ module.exports = async function (url: string) {
 
             mainWindow.webContents.on("did-finish-load", () => {
                 const loc = mainWindow.webContents.getURL();
-                if (loc.startsWith("https://login.live.com/oauth20_desktop.srf")) {
+                if (loc.startsWith(redirect_uri)) {
                     const urlParams = new URLSearchParams(loc.substr(loc.indexOf("?") + 1)).get("code");
                     if (urlParams) {
                         resolve(urlParams);

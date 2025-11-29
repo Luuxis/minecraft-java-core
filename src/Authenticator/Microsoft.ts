@@ -72,16 +72,15 @@ async function getBase64(url: string): Promise<string> {
 export default class Microsoft {
 	public client_id: string;
 	public type: MicrosoftClientType;
+	public redirect_uri: string;
 
 	/**
 	 * Creates a Microsoft auth instance.
 	 * @param client_id Your Microsoft OAuth client ID (default: '00000000402b5328' if none provided).
 	 */
-	constructor(client_id: string) {
-		if (!client_id) {
-			client_id = '00000000402b5328';
-		}
-		this.client_id = client_id;
+	constructor(client_id: string, redirect_uri?: string) {
+		this.client_id = client_id || '00000000402b5328';
+		this.redirect_uri = redirect_uri || 'https://login.live.com/oauth20_desktop.srf';
 
 		// Determine if we're running under Electron, NW.js, or just in a terminal
 		if (typeof process !== 'undefined' && process.versions && process.versions.electron) {
@@ -103,30 +102,25 @@ export default class Microsoft {
 	 */
 	public async getAuth(type?: MicrosoftClientType, url?: string): Promise<AuthResponse | AuthError | false> {
 		const finalType = type || this.type;
-		const finalUrl = url ||
-			`https://login.live.com/oauth20_authorize.srf?client_id=${this.client_id}&response_type=code&redirect_uri=https://login.live.com/oauth20_desktop.srf&scope=XboxLive.signin%20offline_access&cobrandid=8058f65d-ce06-4c30-9559-473c9275a65d&prompt=select_account`;
+		const finalUrl = url || `https://login.live.com/oauth20_authorize.srf?client_id=${this.client_id}&response_type=code&redirect_uri=${this.redirect_uri}&scope=XboxLive.signin%20offline_access&cobrandid=8058f65d-ce06-4c30-9559-473c9275a65d&prompt=select_account`;
 
-		// Dynamically require different GUI modules depending on environment
 		let userCode: string | 'cancel';
 		switch (finalType) {
 			case 'electron':
-				userCode = await (require('./GUI/Electron.js'))(finalUrl);
+				userCode = await (require('./GUI/Electron.js'))(finalUrl, this.redirect_uri);
 				break;
 			case 'nwjs':
-				userCode = await (require('./GUI/NW.js'))(finalUrl);
+				userCode = await (require('./GUI/NW.js'))(finalUrl, this.redirect_uri);
 				break;
 			case 'terminal':
-				userCode = await (require('./GUI/Terminal.js'))(finalUrl);
+				userCode = await (require('./GUI/Terminal.js'))(finalUrl, this.redirect_uri);
 				break;
 			default:
 				return false;
 		}
 
-		if (userCode === 'cancel') {
-			return false;
-		}
-
 		// Exchange the code for an OAuth2 token, then retrieve account data
+		if (userCode === 'cancel') return false;
 		return this.exchangeCodeForToken(userCode);
 	}
 
@@ -140,7 +134,7 @@ export default class Microsoft {
 			const response = await fetch('https://login.live.com/oauth20_token.srf', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: `client_id=${this.client_id}&code=${code}&grant_type=authorization_code&redirect_uri=https://login.live.com/oauth20_desktop.srf`
+				body: `client_id=${this.client_id}&code=${code}&grant_type=authorization_code&redirect_uri=${this.redirect_uri}`
 			});
 			const oauth2 = await response.json();
 
