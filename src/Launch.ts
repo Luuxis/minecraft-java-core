@@ -11,6 +11,7 @@ import { spawn } from 'child_process';
 import jsonMinecraft from './Minecraft/Minecraft-Json.js';
 import librariesMinecraft from './Minecraft/Minecraft-Libraries.js';
 import assetsMinecraft from './Minecraft/Minecraft-Assets.js';
+import loggingMinecraft from './Minecraft/Minecraft-Logging.js';
 import loaderMinecraft from './Minecraft/Minecraft-Loader.js';
 import javaMinecraft from './Minecraft/Minecraft-Java.js';
 import bundleMinecraft from './Minecraft/Minecraft-Bundle.js';
@@ -308,16 +309,16 @@ export default class Launch extends EventEmitter {
 	}
 
 	async DownloadGame() {
-		let InfoVersion = await new jsonMinecraft(this.options).GetInfoVersion();
+		const InfoVersion = await new jsonMinecraft(this.options).GetInfoVersion();
 		let loaderJson: any = null;
-		if ('error' in InfoVersion) {
-			return this.emit('error', InfoVersion);
-		}
-		let { json, version } = InfoVersion;
+		if ('error' in InfoVersion) return this.emit('error', InfoVersion);
 
-		let libraries = new librariesMinecraft(this.options)
-		let bundle = new bundleMinecraft(this.options)
-		let java = new javaMinecraft(this.options)
+		const { json, version } = InfoVersion;
+
+		const libraries = new librariesMinecraft(this.options)
+
+		const bundle = new bundleMinecraft(this.options)
+		const java = new javaMinecraft(this.options)
 
 		java.on('progress', (progress: any, size: any, element: any) => {
 			this.emit('progress', progress, size, element)
@@ -327,15 +328,16 @@ export default class Launch extends EventEmitter {
 			this.emit('extract', progress)
 		});
 
-		let gameLibraries: any = await libraries.Getlibraries(json);
-		let gameAssetsOther: any = await libraries.GetAssetsOthers(this.options.url);
-		let gameAssets: any = await new assetsMinecraft(this.options).getAssets(json);
-		let gameJava: any = this.options.java.path ? { files: [] } : await java.getJavaFiles(json);
+		const gameLibraries: any = await libraries.Getlibraries(json);
+		const gameAssetsOther: any = await libraries.GetAssetsOthers(this.options.url);
+		const gameAssets: any = await new assetsMinecraft(this.options).getAssets(json);
+		await new loggingMinecraft(this.options).getLogging(json);
+		const gameJava: any = this.options.java.path ? { files: [] } : await java.getJavaFiles(json);
 
 
 		if (gameJava.error) return gameJava
 
-		let filesList: any = await bundle.checkBundle([...gameLibraries, ...gameAssetsOther, ...gameAssets, ...gameJava.files]);
+		const filesList: any = await bundle.checkBundle([...gameLibraries, ...gameAssetsOther, ...gameAssets, ...gameJava.files]);
 
 		if (filesList.length > 0) {
 			let downloader = new Downloader();
@@ -361,7 +363,7 @@ export default class Launch extends EventEmitter {
 		}
 
 		if (this.options.loader.enable === true) {
-			let loaderInstall = new loaderMinecraft(this.options)
+			const loaderInstall = new loaderMinecraft(this.options)
 
 			loaderInstall.on('extract', (extract: any) => {
 				this.emit('extract', extract);
@@ -379,7 +381,7 @@ export default class Launch extends EventEmitter {
 				this.emit('patch', patch);
 			});
 
-			let jsonLoader = await loaderInstall.GetLoader(version, this.options.java.path ? this.options.java.path : gameJava.path)
+			const jsonLoader = await loaderInstall.GetLoader(version, this.options.java.path ? this.options.java.path : gameJava.path)
 				.then((data: any) => data)
 				.catch((err: any) => err);
 			if (jsonLoader.error) return jsonLoader;
@@ -388,7 +390,7 @@ export default class Launch extends EventEmitter {
 
 		if (this.options.verify) await bundle.checkFiles([...gameLibraries, ...gameAssetsOther, ...gameAssets, ...gameJava.files]);
 
-		let natives = await libraries.natives(gameLibraries);
+		const natives = await libraries.natives(gameLibraries);
 		if (natives.length === 0) json.nativesList = false;
 		else json.nativesList = true;
 

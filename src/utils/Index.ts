@@ -255,7 +255,7 @@ function skipLibrary(lib: MinecraftLibrary): boolean {
 function fromAnyReadable(webStream: ReadableStream<Uint8Array>): import('node:stream').Readable {
 	let NodeReadableStreamCtor: typeof ReadableStream | undefined;
 	if (!NodeReadableStreamCtor && typeof globalThis?.navigator === 'undefined') {
-		import('node:stream/web').then((mod) => { NodeReadableStreamCtor = mod.ReadableStream; });
+		import('node:stream/web').then((mod) => { NodeReadableStreamCtor = mod.ReadableStream as any; });
 	}
 	if (NodeReadableStreamCtor && webStream instanceof NodeReadableStreamCtor && typeof (Readable as any).fromWeb === 'function') {
 		return Readable.fromWeb(webStream as any);

@@ -59,6 +59,7 @@ export interface VersionJSON {
 	};
 	libraries?: Array<any>;    // List of library dependencies
 	nativesList?: Array<string>;
+	logging?: any;            // Logging configuration
 }
 
 export interface Library {
@@ -269,6 +270,12 @@ export default class MinecraftArguments {
 				jvmArgs.push('-Xdock:name=Minecraft');
 				jvmArgs.push(`-Xdock:icon=${this.options.path}/assets/objects/${iconHash.substring(0, 2)}/${iconHash}`);
 			}
+		}
+
+		if (versionJson.logging && versionJson.logging.client) {
+			const logConfig = versionJson.logging.client;
+			const logConfigPath = `${this.options.path}/assets/log_configs/${logConfig.file.id}`;
+			jvmArgs.push(logConfig.argument.replace('${path}', logConfigPath));
 		}
 
 		// Append any user-supplied JVM arguments
