@@ -1,55 +1,110 @@
 const { Launch, Microsoft } = require('minecraft-java-core');
-const launcher = new Launch();
-
 const fs = require('fs');
-let mc
 
-(async () => {
-    if (!fs.existsSync('./account.json')) {
-        mc = await new Microsoft().getAuth();
-        fs.writeFileSync('./account.json', JSON.stringify(mc, null, 4));
-    } else {
-        mc = JSON.parse(fs.readFileSync('./account.json'));
-        if (!mc.refresh_token) {
-            mc = await new Microsoft().getAuth();
-            fs.writeFileSync('./account.json', JSON.stringify(mc, null, 4));
-        } else {
-            mc = await new Microsoft().refresh(mc);
-            fs.writeFileSync('./account.json', JSON.stringify(mc, null, 4));
-            if (mc.error) process.exit(1);
-        }
+
+const ACCOUNT_FILE = './account.json';
+const INSTANCE_NAME = 'hypixel';
+const API_URL = 'http://staging.luuxcraft.fr/api/user/bb8f5247-1d38-41bb-ab6d-3200471a06b2/instances';
+const MINECRAFT_PATH = './minecraft';
+const MEMORY_CONFIG = { min: '14G', max: '16G' };
+
+
+async function loadOrAuthenticateAccount() {
+    const microsoft = new Microsoft();
+
+    if (!fs.existsSync(ACCOUNT_FILE)) {
+        const account = await microsoft.getAuth();
+        fs.writeFileSync(ACCOUNT_FILE, JSON.stringify(account, null, 4));
+        return account;
     }
 
-    const opt = {
-        url: "https://luuxcraft.fr/api/user/48c74227-13d1-48d6-931b-0f12b73da340/instance",
-        path: './minecraft',
-        authenticator: mc,
-        version: '1.8.9',
+    const account = JSON.parse(fs.readFileSync(ACCOUNT_FILE, 'utf8'));
+
+    if (!account.refresh_token) {
+        const newAccount = await microsoft.getAuth();
+        fs.writeFileSync(ACCOUNT_FILE, JSON.stringify(newAccount, null, 4));
+        return newAccount;
+    }
+
+    const refreshedAccount = await microsoft.refresh(account);
+    if (refreshedAccount.error) {
+        throw new Error(`Erreur d'authentification: ${refreshedAccount.error}`);
+    }
+
+    fs.writeFileSync(ACCOUNT_FILE, JSON.stringify(refreshedAccount, null, 4));
+    return refreshedAccount;
+}
+
+async function fetchInstanceData() {
+    const response = await fetch(API_URL);
+
+    if (!response.ok) {
+        throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+    }
+
+    const instances = await response.json();
+    const instanceData = Object.values(instances).find(
+        i => i.name.toLowerCase() === INSTANCE_NAME.toLowerCase()
+    );
+
+    if (!instanceData) {
+        throw new Error(`Instance "${INSTANCE_NAME}" introuvable`);
+    }
+
+    return instanceData;
+}
+
+function buildLaunchOptions(instanceData, account) {
+    const loaderType = instanceData.loader.loader_type.toLowerCase();
+
+    return {
+        url: instanceData.url,
+        path: MINECRAFT_PATH,
+        authenticator: account,
+        version: instanceData.loader.minecraft_version,
         intelEnabledMac: true,
-        instance: "Hypixel",
-
-        ignored: [
-            "config",
-            "logs",
-            "resourcepacks",
-            "options.txt",
-            "optionsof.txt"
-        ],
-
+        instance: instanceData.name,
+        ignored: instanceData.ignored,
         loader: {
-            type: 'forge',
-            build: 'latest',
-            enable: true
+            type: loaderType,
+            build: instanceData.loader.loader_version,
+            enable: loaderType !== 'none',
+            path: './'
         },
-        memory: {
-            min: '14G',
-            max: '16G'
-        },
+        memory: MEMORY_CONFIG
     };
+}
 
-    launcher.Launch(opt);
-    launcher.on('progress', (progress, size) => console.log(`[DL] ${((progress / size) * 100).toFixed(2)}%`));
-    launcher.on('patch', pacth => process.stdout.write(pacth));
+function setupLauncherListeners(launcher) {
+    launcher.on('progress', (progress, size) => {
+        const percentage = ((progress / size) * 100).toFixed(2);
+        console.log(`[DL] ${percentage}%`);
+    });
+
+    launcher.on('patch', patch => process.stdout.write(patch));
     launcher.on('data', line => process.stdout.write(line));
-    launcher.on('error', err => console.error(err));
-})();
+    launcher.on('error', err => console.error('[ERROR]', err));
+}
+
+async function main() {
+    try {
+        console.log('🔐 Authentification en cours...');
+        const account = await loadOrAuthenticateAccount();
+
+        console.log('📡 Récupération des données de l\'instance...');
+        const instanceData = await fetchInstanceData();
+
+        console.log(`🎮 Lancement de ${instanceData.name}...`);
+        const launcher = new Launch();
+        const options = buildLaunchOptions(instanceData, account);
+
+        setupLauncherListeners(launcher);
+        launcher.Launch(options);
+
+    } catch (error) {
+        console.error('❌ Erreur fatale:', error.message);
+        process.exit(1);
+    }
+}
+
+main();
