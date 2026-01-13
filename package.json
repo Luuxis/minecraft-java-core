@@ -12,8 +12,10 @@
     "scripts": {
         "dev": "rimraf ./build && tsc -w",
         "build": "rimraf ./build && tsc",
-        "prepublishOnly": "npm i && npm run build"
+        "prepublishOnly": "pnpm i && pnpm run build",
+        "prepare": "pnpm run build"
     },
+    "packageManager": "pnpm@10.17.0",
     "engines": {
         "node": ">=18.0.0"
     },
