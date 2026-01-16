@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:stream";
+import { EventEmitter } from "events";
 import downloader from "../utils/Downloader.js";
 import path from "node:path";
 import fs from "node:fs";

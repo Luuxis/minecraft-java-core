@@ -4,14 +4,15 @@
     "types": "./build/Index.d.ts",
     "exports": {
         ".": {
-            "import": "./build/Index.js",
-            "require": "./build/Index.js"
+            "import": "./build/esm/index.js",
+            "require": "./build/index.js",
+            "types": "./build/index.d.ts"
         }
     },
     "description": "A library starting minecraft game NW.js and Electron.js",
     "scripts": {
         "dev": "rimraf ./build && tsc -w",
-        "build": "rimraf ./build && tsc",
+        "build": "rimraf ./build && tsc && tsc -p tsconfig.esm.json",
         "prepublishOnly": "npm i && npm run build"
     },
     "engines": {

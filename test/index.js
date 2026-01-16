@@ -3,8 +3,8 @@ const fs = require('fs');
 
 
 const ACCOUNT_FILE = './account.json';
-const INSTANCE_NAME = 'hypixel';
-const API_URL = 'http://staging.luuxcraft.fr/api/user/bb8f5247-1d38-41bb-ab6d-3200471a06b2/instances';
+const INSTANCE_NAME = 'Extra';
+const API_URL = 'https://filelauncher.patateland.wstr.fr/files';
 const MINECRAFT_PATH = './minecraft';
 const MEMORY_CONFIG = { min: '14G', max: '16G' };
 
@@ -55,19 +55,19 @@ async function fetchInstanceData() {
 }
 
 function buildLaunchOptions(instanceData, account) {
-    const loaderType = instanceData.loader.loader_type.toLowerCase();
+    const loaderType = instanceData.loader?.loader_type.toLowerCase() || instanceData.loadder.loadder_type.toLowerCase();
 
     return {
         url: instanceData.url,
         path: MINECRAFT_PATH,
         authenticator: account,
-        version: instanceData.loader.minecraft_version,
+        version: instanceData.loader?.minecraft_version || instanceData.loadder.minecraft_version,
         intelEnabledMac: true,
         instance: instanceData.name,
         ignored: instanceData.ignored,
         loader: {
             type: loaderType,
-            build: instanceData.loader.loader_version,
+            build: instanceData.loader?.loader_version || instanceData.loadder.loadder_version,
             enable: loaderType !== 'none',
             path: './'
         },
