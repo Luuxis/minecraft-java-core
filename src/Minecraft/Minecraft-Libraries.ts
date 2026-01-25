@@ -187,6 +187,23 @@ export default class Libraries {
 		return libraries;
 	}
 
+	public async GetLogging(): Promise<LibraryDownload[]> {
+		let libraries: LibraryDownload[] = [];
+		if (this.json.logging) {
+			const logConfig = this.json.logging;
+			const artifact = logConfig.client.file;
+
+			libraries.push({
+				sha1: artifact.sha1,
+				size: artifact.size,
+				path: `assets/log_configs/${artifact.id}`,
+				type: 'Log_configs',
+				url: artifact.url
+			});
+		}
+		return libraries;
+	}
+
 	/**
 	 * Fetches custom assets or libraries from a remote URL if provided.
 	 * This method expects the response to be an array of objects with

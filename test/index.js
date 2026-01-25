@@ -3,8 +3,8 @@ const fs = require('fs');
 
 
 const ACCOUNT_FILE = './account.json';
-const INSTANCE_NAME = 'Extra';
-const API_URL = 'https://filelauncher.patateland.wstr.fr/files';
+const INSTANCE_NAME = 'dev';
+const API_URL = 'http://luuxcraft.fr/api/user/bb8f5247-1d38-41bb-ab6d-3200471a06b2/instances';
 const MINECRAFT_PATH = './minecraft';
 const MEMORY_CONFIG = { min: '14G', max: '16G' };
 

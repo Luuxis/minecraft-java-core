@@ -11,7 +11,6 @@ import { spawn } from 'child_process';
 import jsonMinecraft from './Minecraft/Minecraft-Json.js';
 import librariesMinecraft from './Minecraft/Minecraft-Libraries.js';
 import assetsMinecraft from './Minecraft/Minecraft-Assets.js';
-import loggingMinecraft from './Minecraft/Minecraft-Logging.js';
 import loaderMinecraft from './Minecraft/Minecraft-Loader.js';
 import javaMinecraft from './Minecraft/Minecraft-Java.js';
 import bundleMinecraft from './Minecraft/Minecraft-Bundle.js';
@@ -329,15 +328,15 @@ export default class Launch extends EventEmitter {
 		});
 
 		const gameLibraries: any = await libraries.Getlibraries(json);
+		const gameLogging: any = await libraries.GetLogging();
 		const gameAssetsOther: any = await libraries.GetAssetsOthers(this.options.url);
 		const gameAssets: any = await new assetsMinecraft(this.options).getAssets(json);
-		await new loggingMinecraft(this.options).getLogging(json);
 		const gameJava: any = this.options.java.path ? { files: [] } : await java.getJavaFiles(json);
 
 
 		if (gameJava.error) return gameJava
 
-		const filesList: any = await bundle.checkBundle([...gameLibraries, ...gameAssetsOther, ...gameAssets, ...gameJava.files]);
+		const filesList: any = await bundle.checkBundle([...gameLibraries, ...gameLogging, ...gameAssetsOther, ...gameAssets, ...gameJava.files]);
 
 		if (filesList.length > 0) {
 			let downloader = new Downloader();
