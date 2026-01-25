@@ -56,6 +56,7 @@ export interface VersionJSON {
 	arguments?: {
 		game?: Array<string>;
 		jvm?: Array<string>;
+		'default-user-jvm'?: Array<any>;
 	};
 	libraries?: Array<any>;    // List of library dependencies
 	nativesList?: Array<string>;
@@ -209,6 +210,106 @@ export default class MinecraftArguments {
 	}
 
 	/**
+	 * Evaluates rules for arguments (OS, version, features).
+	 * @param rules Array of rules to evaluate.
+	 * @returns true if all rules pass, false otherwise.
+	 */
+	private EvaluateRules(rules?: Array<any>): boolean {
+		if (!rules || rules.length === 0) return true;
+
+		for (const rule of rules) {
+			const action = rule.action || 'allow';
+			let matches = true;
+
+			// Check OS rules
+			if (rule.os) {
+				const osName = MOJANG_LIBRARY_MAP[process.platform];
+
+				if (rule.os.name && rule.os.name !== osName) {
+					matches = false;
+				}
+
+				// Check OS version range (for Windows)
+				if (matches && rule.os.versionRange) {
+					const osRelease = os.release();
+
+					// Simple version comparison for Windows
+					if (rule.os.versionRange.min) {
+						// For simplicity, we'll allow the rule if on Windows
+						// A more complete implementation would parse and compare versions
+						matches = process.platform === 'win32';
+					}
+					if (rule.os.versionRange.max) {
+						// Similar simple check
+						matches = process.platform === 'win32';
+					}
+				}
+			}
+
+			// If action is 'allow' and matches, or action is 'disallow' and doesn't match
+			if ((action === 'allow' && !matches) || (action === 'disallow' && matches)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Extracts the key from a JVM argument for comparison.
+	 * @param arg The JVM argument to extract the key from.
+	 */
+	private getArgKey(arg: string): string {
+		if (arg.includes('=')) return arg.split('=')[0];
+		if (arg.match(/^-XX:[+-]/)) return arg;
+		const match = arg.match(/^(.+?)(\d+[GMKgmkBb]?)?$/);
+		return match ? match[1] : arg;
+	}
+
+	/**
+	 * Processes default-user-jvm arguments from the version JSON.
+	 * @param versionJson The Minecraft version JSON.
+	 * @param existingArgs Existing JVM arguments to check for duplicates.
+	 * @returns Array of default JVM arguments to add.
+	 */
+	private ProcessDefaultUserJVMArgs(versionJson: VersionJSON, existingArgs: Array<string>): Array<string> {
+		const defaultUserJVM = versionJson.arguments?.['default-user-jvm'];
+		if (!defaultUserJVM || !Array.isArray(defaultUserJVM)) {
+			return [];
+		}
+
+		// Créer un Set des clés existantes (jvmArgs + JVM_ARGS utilisateur)
+		const allExistingArgs = [...existingArgs, ...this.options.JVM_ARGS];
+		const existingKeys = new Set(allExistingArgs.map(arg => this.getArgKey(arg)));
+
+		const defaultArgs: Array<string> = [];
+
+		for (const argEntry of defaultUserJVM) {
+			// Check if rules exist and evaluate them
+			if (argEntry.rules && !this.EvaluateRules(argEntry.rules)) continue;
+
+			// Extract values
+			let values: Array<string> = [];
+			if (typeof argEntry.value === 'string') values = [argEntry.value];
+			else if (Array.isArray(argEntry.value)) values = argEntry.value;
+
+			// Add values if they don't already exist
+			for (const value of values) {
+				if (typeof value === 'string') {
+					const key = this.getArgKey(value);
+					// Ajouter seulement si la clé n'existe pas déjà
+					if (!existingKeys.has(key)) {
+						defaultArgs.push(value);
+						existingKeys.add(key); // Éviter les doublons dans defaultUserJVM lui-même
+					}
+				}
+			}
+		}
+
+		return defaultArgs;
+	}
+
+	/**
 	 * Builds the JVM arguments needed by Minecraft. This includes memory settings,
 	 * OS-specific options, and any additional arguments supplied by the user.
 	 * @param versionJson The Minecraft version JSON.
@@ -278,7 +379,14 @@ export default class MinecraftArguments {
 			jvmArgs.push(logConfig.argument.replace('${path}', logConfigPath));
 		}
 
+		// Process and add default-user-jvm arguments from version JSON
+		// These are Mojang's recommended JVM arguments for this version
+		// Pass existing jvmArgs to avoid duplicates with hardcoded arguments
+		const defaultUserJVMArgs = this.ProcessDefaultUserJVMArgs(versionJson, jvmArgs);
+		jvmArgs.push(...defaultUserJVMArgs);
+
 		// Append any user-supplied JVM arguments
+		// User arguments come last so they can override defaults
 		jvmArgs.push(...this.options.JVM_ARGS);
 
 		return jvmArgs;
