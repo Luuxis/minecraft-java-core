@@ -156,7 +156,14 @@ export type LaunchOPTS = {
 	 * If `true`, the launcher will not check if the user is online.
 	 */
 	bypassOffline?: boolean,
+	/**
+	 * Intel Macs with dedicated graphics cards will use the dedicated card instead of the integrated card.
+	 */
 	intelEnabledMac?: boolean,
+	/**
+	 * Ignore log4j.
+	 */
+	ignore_log4j?: boolean,
 	/**
 	 * Loader config
 	 */
@@ -211,6 +218,7 @@ export default class Launch extends EventEmitter {
 			instance: null,
 			detached: false,
 			intelEnabledMac: false,
+			ignore_log4j: false,
 			downloadFileMultiple: 5,
 			bypassOffline: false,
 

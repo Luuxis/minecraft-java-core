@@ -135,7 +135,7 @@ export default class JavaDownloader extends EventEmitter {
 			if (!info.downloads) continue;
 
 			files.push({
-				path: `runtime/jre-${versionName}-${archOs}/${relPath.replace(toDelete, '')}`,
+				path: `runtime/${javaVersionName}/${relPath.replace(toDelete, '')}`,
 				executable: info.executable,
 				sha1: info.downloads.raw.sha1,
 				size: info.downloads.raw.size,
@@ -148,7 +148,7 @@ export default class JavaDownloader extends EventEmitter {
 			files,
 			path: path.resolve(
 				this.options.path,
-				`runtime/jre-${versionName}-${archOs}`,
+				`runtime/${javaVersionName}`,
 				'bin',
 				process.platform === 'win32' ? 'javaw.exe' : 'java'
 			)

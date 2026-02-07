@@ -27,6 +27,7 @@ export interface LaunchOptions {
 	authenticator: any;        // Auth object containing tokens, user info, etc.
 	version?: string;         // Minecraft version
 	bypassOffline?: boolean;   // Bypass offline mode for multiplayer
+	ignore_log4j?: boolean;    // Ignore log4j
 	memory: {
 		min?: string;             // Minimum memory (e.g. "512M", "1G")
 		max?: string;             // Maximum memory (e.g. "4G", "8G")
@@ -373,7 +374,7 @@ export default class MinecraftArguments {
 			}
 		}
 
-		if (versionJson.logging && versionJson.logging.client) {
+		if (versionJson.logging && versionJson.logging.client && !this.options.ignore_log4j) {
 			const logConfig = versionJson.logging.client;
 			const logConfigPath = `${this.options.path}/assets/log_configs/${logConfig.file.id}`;
 			jvmArgs.push(logConfig.argument.replace('${path}', logConfigPath));
