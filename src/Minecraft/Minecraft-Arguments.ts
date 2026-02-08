@@ -158,8 +158,8 @@ export default class MinecraftArguments {
 		const placeholderMap: Record<string, string> = {
 			'${auth_access_token}': this.authenticator.access_token,
 			'${auth_session}': this.authenticator.access_token,
-			'${auth_player_name}': this.authenticator.name,
-			'${auth_uuid}': this.authenticator.uuid,
+			'${auth_player_name}': this.authenticator.selected_profile ? this.authenticator.selected_profile.name : this.authenticator.name,
+			'${auth_uuid}': this.authenticator.selected_profile ? this.authenticator.selected_profile.id : this.authenticator.uuid,
 			'${auth_xuid}': this.authenticator?.xboxAccount?.xuid || this.authenticator.access_token,
 			'${user_properties}': this.authenticator.user_properties,
 			'${user_type}': userType,

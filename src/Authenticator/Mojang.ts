@@ -14,8 +14,16 @@ async function login(username: string, password?: string) {
 		return {
 			access_token: UUID,
 			client_token: UUID,
-			uuid: UUID,
-			name: username,
+			available_profiles: [
+				{
+					id: UUID,
+					name: username
+				}
+			],
+			selected_profile: {
+				id: UUID,
+				name: username
+			},
 			user_properties: '{}',
 			meta: {
 				online: false,
@@ -47,8 +55,8 @@ async function login(username: string, password?: string) {
 	let user = {
 		access_token: message.accessToken,
 		client_token: message.clientToken,
-		uuid: message.selectedProfile.id,
-		name: message.selectedProfile.name,
+		selected_profile: message.selectedProfile,
+		available_profiles: message.availableProfiles,
 		user_properties: '{}',
 		meta: {
 			online: true,
@@ -78,8 +86,7 @@ async function refresh(acc: any) {
 	let user = {
 		access_token: message.accessToken,
 		client_token: message.clientToken,
-		uuid: message.selectedProfile.id,
-		name: message.selectedProfile.name,
+		selected_profile: message.selectedProfile,
 		user_properties: '{}',
 		meta: {
 			online: true,
