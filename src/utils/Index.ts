@@ -7,40 +7,15 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { Readable } from 'node:stream';
 import Unzipper from './unzipper.js';
-
-// This interface defines the structure of a Minecraft library rule.
-interface LibraryRule {
-	action: 'allow' | 'disallow';
-	os?: {
-		name?: string;
-	};
-	features?: any; // Adjust or remove if not used in your code
-}
-
-/**
- * Represents a Library object, possibly containing rules or additional fields.
- * Adjust according to your actual library structure.
- */
-interface MinecraftLibrary {
-	name: string;
-	rules?: LibraryRule[];
-	downloads?: {
-		artifact?: {
-			url?: string;
-			size?: number;
-		};
-	};
-	natives?: Record<string, string>;
-	[key: string]: any; // Extend if needed
-}
-
-/**
- * Represents a minimal version JSON structure to check if it's considered "old" (pre-1.6 or legacy).
- */
-interface MinecraftVersionJSON {
-	assets?: string; // "legacy" or "pre-1.6" indicates older assets
-	[key: string]: any;
-}
+import type {
+	MinecraftLibrary,
+	MinecraftVersionJSON,
+	LibraryRule,
+	ForgeLoaderData,
+	NeoForgeLoaderData,
+	FabricLoaderData,
+	ArchiveEntry,
+} from '../types.js';
 
 /**
  * Parses a Gradle/Maven identifier string (like "net.minecraftforge:forge:1.19-41.0.63")
@@ -116,7 +91,7 @@ function isold(json: MinecraftVersionJSON): boolean {
  *
  * @param type A string representing the loader type
  */
-function loader(type: string) {
+function loader(type: string): ForgeLoaderData | NeoForgeLoaderData | FabricLoaderData | undefined {
 	if (type === 'forge') {
 		return {
 			metaData: 'https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json',
@@ -171,16 +146,14 @@ const mirrors = [
  * @param prefix A path prefix filter (e.g., "maven/org/lwjgl/") if you want a list of matching files instead of direct extraction
  * @returns      A buffer or an array of { name, data }, or a list of filenames if prefix is given
  */
-async function getFileFromArchive(jar: string, file: string | null = null, prefix: string | null = null, includeDirs: boolean = false): Promise<any> {
-	const result: any[] = [];
+async function getFileFromArchive(jar: string, file: string | null = null, prefix: string | null = null, includeDirs: boolean = false): Promise<Buffer | string[] | ArchiveEntry[] | undefined> {
+	const result: Array<string | ArchiveEntry> = [];
 	const zip = new Unzipper(jar);
 	const entries = zip.getEntries();
 
 	return new Promise((resolve) => {
 		for (const entry of entries) {
 			if (includeDirs ? !prefix : (!entry.isDirectory && !prefix)) {
-				// If no prefix is given, either return a specific file if 'file' is set,
-				// or accumulate all entries if 'file' is null
 				if (entry.entryName === file) {
 					return resolve(entry.getData());
 				} else if (!file) {
@@ -188,19 +161,17 @@ async function getFileFromArchive(jar: string, file: string | null = null, prefi
 				}
 			}
 
-			// If a prefix is given, collect all entry names under that prefix
-			if (!entry.isDirectory && entry.entryName.includes(prefix)) {
+			if (!entry.isDirectory && entry.entryName.includes(prefix as string)) {
 				result.push(entry.entryName);
 			}
 		}
 
 		if (file && !prefix) {
-			// If a specific file was requested but not found, return undefined or empty
 			return resolve(undefined);
 		}
 
-		// Otherwise, resolve the array of results
-		resolve(result);
+		// If prefix was used, result contains only strings; otherwise only ArchiveEntries
+		resolve(result as string[] | ArchiveEntry[]);
 	});
 }
 
@@ -255,10 +226,10 @@ function skipLibrary(lib: MinecraftLibrary): boolean {
 function fromAnyReadable(webStream: ReadableStream<Uint8Array>): import('node:stream').Readable {
 	let NodeReadableStreamCtor: typeof ReadableStream | undefined;
 	if (!NodeReadableStreamCtor && typeof globalThis?.navigator === 'undefined') {
-		import('node:stream/web').then((mod) => { NodeReadableStreamCtor = mod.ReadableStream as any; });
+		import('node:stream/web').then((mod) => { NodeReadableStreamCtor = mod.ReadableStream as typeof ReadableStream; });
 	}
-	if (NodeReadableStreamCtor && webStream instanceof NodeReadableStreamCtor && typeof (Readable as any).fromWeb === 'function') {
-		return Readable.fromWeb(webStream as any);
+	if (NodeReadableStreamCtor && webStream instanceof NodeReadableStreamCtor && typeof (Readable as unknown as { fromWeb: Function }).fromWeb === 'function') {
+		return (Readable as unknown as { fromWeb: (stream: ReadableStream) => Readable }).fromWeb(webStream);
 	}
 
 	const nodeStream = new Readable({ read() { } });

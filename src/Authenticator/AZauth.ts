@@ -4,38 +4,9 @@
  */
 
 import { Buffer } from 'node:buffer';
+import type { AZauthUser, AZauthUserInfo } from '../types.js';
 
-// This interface defines the structure of the user object
-// returned by the AZauth service. You can adapt it to your needs.
-interface AZauthUser {
-	access_token?: string;
-	client_token?: string;
-	uuid?: string;
-	name?: string;
-	user_properties?: string;
-	user_info?: {
-		id?: string;
-		banned?: boolean;
-		money?: number;
-		role?: string;
-		verified?: boolean;
-	};
-	meta?: {
-		online: boolean;
-		type: string;
-	};
-	profile?: {
-		skins: Array<{
-			url: string;
-			base64?: string;
-		}>;
-	};
-	// Error-related fields
-	error?: boolean;
-	reason?: string;
-	message?: string;
-	A2F?: boolean;
-}
+export type { AZauthUser, AZauthUserInfo };
 
 export default class AZauth {
 	private url: string;

@@ -6,38 +6,17 @@
 import fs from 'fs';
 import path from 'path';
 import { getFileHash } from '../utils/Index.js';
+import type { BundleItem, LaunchOptions } from '../types.js';
 
-/**
- * Represents a single file or object that may need to be downloaded or checked.
- */
-export interface BundleItem {
-	type?: 'CFILE' | 'Assets' | string; // e.g., "CFILE" for direct content files
-	path: string;                       // Local path where file is or should be stored
-	folder?: string;                    // Directory path (derived from 'path')
-	content?: string;                   // File content if type === "CFILE"
-	sha1?: string;                      // Expected SHA-1 hash for the file
-	size?: number;                      // Size in bytes if relevant
-	url?: string;                       // Download URL if relevant
-}
-
-/**
- * Options for the MinecraftBundle class, indicating paths and ignored files.
- */
-export interface MinecraftBundleOptions {
-	path: string;             // The main Minecraft directory or root path
-	instance?: string;        // Instance name, if working with multiple instances
-	ignored: string[];        // Files or directories to ignore when cleaning
-}
+export type { BundleItem };
 
 /**
  * This class manages checking, downloading, and cleaning up Minecraft files.
- * It compares local files with a provided bundle, identifies missing or
- * outdated files, and can remove extraneous files.
  */
 export default class MinecraftBundle {
-	private options: MinecraftBundleOptions;
+	private options: LaunchOptions;
 
-	constructor(options: MinecraftBundleOptions) {
+	constructor(options: LaunchOptions) {
 		this.options = options;
 	}
 

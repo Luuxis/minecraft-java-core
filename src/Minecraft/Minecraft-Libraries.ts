@@ -6,19 +6,25 @@
 import os from 'os';
 import fs from 'fs';
 import { getFileFromArchive } from '../utils/Index.js';
+import type {
+	MinecraftVersionJSON,
+	MinecraftLibrary,
+	DownloadFile,
+	CustomAssetItem,
+	LaunchOptions,
+	MOJANG_OS_MAP,
+	MOJANG_ARCH_MAP,
+	ArchiveEntry
+} from '../types.js';
 
-/**
- * Maps Node.js platforms to Mojang's naming scheme for OS in library natives.
- */
+/** Maps Node.js platforms to Mojang's naming scheme */
 const MojangLib: Record<string, string> = {
 	win32: 'windows',
 	darwin: 'osx',
 	linux: 'linux'
 };
 
-/**
- * Maps Node.js architecture strings to Mojang's arch replacements (e.g., "${arch}" => 64).
- */
+/** Maps Node.js architecture to Mojang's arch replacements */
 const Arch: Record<string, string> = {
 	x32: '32',
 	x64: '64',
@@ -27,116 +33,29 @@ const Arch: Record<string, string> = {
 };
 
 /**
- * Represents a single library entry in the version JSON.
- * Adjust or extend this interface based on your actual JSON structure.
- */
-interface MinecraftLibrary {
-	name?: string;
-	rules?: Array<{
-		os?: { name: string };
-		action?: string;
-	}>;
-	natives?: Record<string, string>;
-	downloads: {
-		artifact?: {
-			sha1: string;
-			size: number;
-			path: string;
-			url: string;
-		};
-		classifiers?: Record<
-			string,
-			{
-				sha1: string;
-				size: number;
-				path: string;
-				url: string;
-			}
-		>;
-	};
-}
-
-/**
- * Represents a Minecraft version JSON structure.
- * Extend this interface to reflect any additional fields you use.
- */
-interface MinecraftVersionJSON {
-	id: string;
-	libraries: MinecraftLibrary[];
-	downloads: {
-		client: {
-			sha1: string;
-			size: number;
-			url: string;
-		};
-	};
-	[key: string]: any;
-}
-
-/**
- * Represents an item in the optional "asset" array fetched from a custom URL.
- */
-interface CustomAssetItem {
-	path: string;
-	hash: string;
-	size: number;
-	url: string;
-}
-
-/**
- * Represents the user-provided options for the Libraries class.
- * Adjust as needed for your codebase.
- */
-interface LibrariesOptions {
-	path: string;        // Base path to the Minecraft folder
-	instance?: string;   // Instance name if using multi-instances
-	[key: string]: any;  // Other fields your code might need
-}
-
-/**
- * Represents a file or library entry that needs to be downloaded and stored.
- */
-interface LibraryDownload {
-	sha1?: string;
-	size?: number;
-	path: string;
-	type: string;
-	url?: string;
-	content?: string; // For CFILE entries (JSON content)
-}
-
-/**
  * This class is responsible for:
  *  - Gathering library download info from the version JSON
  *  - Handling custom asset entries if provided
- *  - Extracting native libraries for the current OS into the appropriate folder
+ *  - Extracting native libraries for the current OS
  */
 export default class Libraries {
 	private json!: MinecraftVersionJSON;
-	private readonly options: LibrariesOptions;
+	private readonly options: LaunchOptions;
 
-	constructor(options: LibrariesOptions) {
+	constructor(options: LaunchOptions) {
 		this.options = options;
 	}
 
-	/**
-	 * Processes the provided Minecraft version JSON to build a list of libraries
-	 * that need to be downloaded (including the main client jar and the version JSON itself).
-	 *
-	 * @param json A MinecraftVersionJSON object (containing libraries, downloads, etc.)
-	 * @returns An array of LibraryDownload items describing each file.
-	 */
-	public async Getlibraries(json: MinecraftVersionJSON): Promise<LibraryDownload[]> {
+	public async Getlibraries(json: MinecraftVersionJSON): Promise<DownloadFile[]> {
 		this.json = json;
-		const libraries: LibraryDownload[] = [];
+		const libraries: DownloadFile[] = [];
 
 		for (const lib of this.json.libraries) {
 			let artifact: { sha1: string; size: number; path: string; url: string } | undefined;
 			let type = 'Libraries';
 
-			if (lib.natives) {
-				// If this library has OS natives, pick the correct classifier
-				const classifiers = lib.downloads.classifiers;
+		if (lib.natives) {
+				const classifiers = lib.downloads?.classifiers;
 				let native = lib.natives[MojangLib[os.platform()]] || lib.natives[os.platform()];
 				type = 'Native';
 				if (native) {
@@ -148,13 +67,12 @@ export default class Libraries {
 					continue;
 				}
 			} else {
-				// If there are rules restricting OS, skip if not matching
 				if (lib.rules && lib.rules[0]?.os?.name) {
 					if (lib.rules[0].os.name !== MojangLib[os.platform()]) {
 						continue;
 					}
 				}
-				artifact = lib.downloads.artifact;
+				artifact = lib.downloads?.artifact;
 			}
 
 			if (!artifact) continue;
@@ -187,8 +105,8 @@ export default class Libraries {
 		return libraries;
 	}
 
-	public async GetLogging(): Promise<LibraryDownload[]> {
-		let libraries: LibraryDownload[] = [];
+	public async GetLogging(): Promise<DownloadFile[]> {
+		let libraries: DownloadFile[] = [];
 		if (this.json.logging) {
 			const logConfig = this.json.logging;
 			const artifact = logConfig.client.file;
@@ -212,13 +130,13 @@ export default class Libraries {
 	 * @param url The remote URL that returns a JSON array of CustomAssetItem
 	 * @returns   An array of LibraryDownload entries describing each item
 	 */
-	public async GetAssetsOthers(url: string | null): Promise<LibraryDownload[]> {
+	public async GetAssetsOthers(url: string | null): Promise<DownloadFile[]> {
 		if (!url) return [];
 
 		const response = await fetch(url);
 		const data: CustomAssetItem[] = await response.json();
 
-		const assets: LibraryDownload[] = [];
+		const assets: DownloadFile[] = [];
 		for (const asset of data) {
 			if (!asset.path) continue;
 
@@ -244,7 +162,7 @@ export default class Libraries {
 	 * @param bundle An array of library entries (some of which may be natives)
 	 * @returns The paths of the native files that were extracted
 	 */
-	public async natives(bundle: LibraryDownload[]): Promise<string[]> {
+	public async natives(bundle: DownloadFile[]): Promise<string[]> {
 		// Gather only the native library files
 		const natives = bundle
 			.filter((item) => item.type === 'Native')
@@ -262,7 +180,7 @@ export default class Libraries {
 
 		// For each native jar, extract its contents (excluding META-INF)
 		for (const native of natives) {
-			const entries = await getFileFromArchive(native, null, null, true);
+			const entries = await getFileFromArchive(native, null, null, true) as ArchiveEntry[];
 
 
 			for (const entry of entries) {

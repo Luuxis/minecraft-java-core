@@ -18,6 +18,12 @@ import {
 
 import Downloader from '../../../utils/Downloader.js';
 import ForgePatcher, { Profile } from '../../patcher.js';
+import type {
+	ForgeInstallProfile,
+	MinecraftLibrary,
+	PatcherProfile,
+	PatcherProcessor,
+} from '../../../types.js';
 
 /**
  * Maps Node.js process.platform values to Mojang library naming conventions.
@@ -81,18 +87,15 @@ type DownloadInstallerResult =
 /**
  * Describes the structure of an install_profile.json (Forge Installer) after extraction.
  */
-interface ForgeProfile extends Profile {
-	install?: {
-		libraries?: any[];
-		[key: string]: any;
-	};
-	version?: {
-		libraries?: any[];
-		[key: string]: any;
-	};
+interface ForgeProfile {
+	install?: ForgeInstallProfile;
+	version?: Record<string, unknown> & { id?: string; libraries?: MinecraftLibrary[] };
+	data: Record<string, { client: string }>;
 	filePath?: string;
 	path?: string;
-	[key: string]: any;
+	processors?: PatcherProcessor[];
+	libraries?: MinecraftLibrary[];
+	error?: { message: string };
 }
 
 /**
@@ -226,7 +229,7 @@ export default class ForgeMC extends EventEmitter {
 	 *
 	 * @param pathInstaller Path to the downloaded Forge installer file.
 	 */
-	public async extractProfile(pathInstaller: string): Promise<{ error?: any; install?: any; version?: any }> {
+	public async extractProfile(pathInstaller: string): Promise<ForgeProfile | { error: { message: string } }> {
 		const fileContent = await getFileFromArchive(pathInstaller, 'install_profile.json');
 		if (!fileContent) {
 			return { error: { message: 'Invalid forge installer' } };
@@ -237,7 +240,7 @@ export default class ForgeMC extends EventEmitter {
 			return { error: { message: 'Invalid forge installer' } };
 		}
 
-		const result: any = {};
+		const result: ForgeProfile = { data: {} };
 
 		// Distinguish between older and newer Forge installers
 		if (forgeJsonOrigin.install) {
@@ -245,7 +248,7 @@ export default class ForgeMC extends EventEmitter {
 			result.version = forgeJsonOrigin.versionInfo;
 		} else {
 			result.install = forgeJsonOrigin;
-			const extraFile = await getFileFromArchive(pathInstaller, path.basename(result.install.json));
+			const extraFile = await getFileFromArchive(pathInstaller, path.basename((result.install as ForgeInstallProfile).json));
 			if (!extraFile) {
 				return { error: { message: 'Invalid additional JSON in forge installer' } };
 			}
@@ -263,7 +266,7 @@ export default class ForgeMC extends EventEmitter {
 	 * @param pathInstaller The path to the Forge installer file.
 	 * @returns A boolean (skipForgeFilter) that indicates whether to filter out certain Forge libs
 	 */
-	public async extractUniversalJar(profile: ForgeProfile, pathInstaller: string): Promise<boolean> {
+	public async extractUniversalJar(profile: ForgeInstallProfile, pathInstaller: string): Promise<boolean> {
 		let skipForgeFilter = true;
 
 		// If there's a direct file path, extract just that file
@@ -276,7 +279,7 @@ export default class ForgeMC extends EventEmitter {
 				fs.mkdirSync(destFolder, { recursive: true });
 			}
 
-			const archiveContent = await getFileFromArchive(pathInstaller, profile.filePath);
+			const archiveContent = await getFileFromArchive(pathInstaller, profile.filePath!) as Buffer | undefined;
 			if (archiveContent) {
 				fs.writeFileSync(path.join(destFolder, fileInfo.name), archiveContent, { mode: 0o777 });
 			}
@@ -284,11 +287,11 @@ export default class ForgeMC extends EventEmitter {
 		// Otherwise, if there's a path referencing "maven/<something>"
 		else if (profile.path) {
 			const fileInfo = getPathLibraries(profile.path);
-			const filesInArchive: string[] = await getFileFromArchive(pathInstaller, null, `maven/${fileInfo.path}`);
+			const filesInArchive = await getFileFromArchive(pathInstaller, null, `maven/${fileInfo.path}`) as string[];
 			for (const file of filesInArchive) {
 				const fileName = path.basename(file);
 				this.emit('extract', `Extracting ${fileName}...`);
-				const fileContent = await getFileFromArchive(pathInstaller, file);
+				const fileContent = await getFileFromArchive(pathInstaller, file) as Buffer | undefined;
 				if (!fileContent) {
 					continue;
 				}
@@ -307,10 +310,10 @@ export default class ForgeMC extends EventEmitter {
 
 		// If there are processors, we likely have a "client.lzma" to store
 		if (profile.processors?.length) {
-			const universalPath = profile.libraries?.find((v: any) => (v.name || '').startsWith('net.minecraftforge:forge'));
-			const clientData = await getFileFromArchive(pathInstaller, 'data/client.lzma');
+			const universalPath = profile.libraries?.find((v) => (v.name || '').startsWith('net.minecraftforge:forge'));
+			const clientData = await getFileFromArchive(pathInstaller, 'data/client.lzma') as Buffer | undefined;
 			if (clientData) {
-				const fileInfo = getPathLibraries(profile.path || universalPath.name, '-clientdata', '.lzma');
+				const fileInfo = getPathLibraries(profile.path || universalPath?.name || '', '-clientdata', '.lzma');
 				const destFolder = path.resolve(this.options.path, 'libraries', fileInfo.path);
 				if (!fs.existsSync(destFolder)) {
 					fs.mkdirSync(destFolder, { recursive: true });
@@ -332,7 +335,7 @@ export default class ForgeMC extends EventEmitter {
 	 * @param skipForgeFilter Whether to filter out "net.minecraftforge:forge" or "minecraftforge"
 	 * @returns An array of the final libraries (including newly downloaded ones).
 	 */
-	public async downloadLibraries(profile: ForgeProfile, skipForgeFilter: boolean): Promise<any[] | { error: string }> {
+	public async downloadLibraries(profile: ForgeProfile, skipForgeFilter: boolean): Promise<MinecraftLibrary[] | { error: string }> {
 		let libraries = profile.version?.libraries || [];
 		const dl = new Downloader();
 		let checkCount = 0;
@@ -439,7 +442,7 @@ export default class ForgeMC extends EventEmitter {
 	 * @param profile The Forge profile containing processor information
 	 * @returns True if successful or if no patching was required
 	 */
-	public async patchForge(profile: ForgeProfile): Promise<boolean> {
+	public async patchForge(profile: ForgeInstallProfile): Promise<boolean> {
 		if (profile?.processors?.length) {
 			const patcher = new ForgePatcher(this.options);
 
@@ -448,7 +451,7 @@ export default class ForgeMC extends EventEmitter {
 			patcher.on('error', (data: string) => this.emit('error', data));
 
 			// If the patch is not valid yet, run the patch process
-			if (!patcher.check(profile)) {
+			if (!patcher.check(profile as PatcherProfile)) {
 				const config = {
 					java: this.options.loader.config.javaPath,
 					minecraft: this.options.loader.config.minecraftJar,

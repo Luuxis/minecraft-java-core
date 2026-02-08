@@ -9,70 +9,45 @@ import { EventEmitter } from 'events';
 
 import { getPathLibraries, mirrors, getFileFromArchive } from '../../../utils/Index.js';
 import Downloader from '../../../utils/Downloader.js';
-import NeoForgePatcher, { Profile } from '../../patcher.js';
+import NeoForgePatcher from '../../patcher.js';
+import type {
+	PatcherProfile,
+	ForgeInstallProfile,
+	MinecraftLibrary,
+	NeoForgeLoaderData,
+	PatcherProcessor,
+} from '../../../types.js';
 
-/**
- * Options passed to NeoForgeMC, including paths, loader configs, etc.
- * Adjust according to your application's specifics.
- */
 interface NeoForgeOptions {
-	path: string;        // Base path where files will be placed or read from
+	path: string;
 	loader: {
-		version: string;   // Minecraft version (e.g. "1.19.2")
-		build: string;     // Build type ("latest", "recommended", or a numeric version)
+		version: string;
+		build: string;
 		config: {
-			javaPath: string;         // Path to the Java executable for patching
-			minecraftJar: string;     // Path to the vanilla Minecraft .jar
-			minecraftJson: string;    // Path to the corresponding .json version file
+			javaPath: string;
+			minecraftJar: string;
+			minecraftJson: string;
 		};
-		type: string;   // Type of loader
+		type: string;
 	};
-	downloadFileMultiple?: number; // Number of concurrent downloads
-	[key: string]: any;           // Allow extra fields as necessary
+	downloadFileMultiple?: number;
 }
 
-/**
- * A structure to describe the loader object with metadata, legacy vs. new API, etc.
- * For example:
- * {
- *   legacyMetaData: 'https://.../legacyMetadata.json',
- *   metaData: 'https://.../metadata.json',
- *   legacyInstall: 'https://.../NeoForge-${version}.jar',
- *   install: 'https://.../NeoForge-${version}.jar'
- * }
- */
-interface LoaderObject {
-	legacyMetaData: string;
-	metaData: string;
-	legacyInstall: string;
-	install: string;
-}
-
-/**
- * Represents the result of downloading the NeoForge installer, or an error.
- */
 interface DownloadInstallerResult {
-	filePath?: string;  // Path to the downloaded jar
-	oldAPI?: boolean;   // Indicates whether the legacy API was used
-	error?: string;     // Error message if something went wrong
+	filePath?: string;
+	oldAPI?: boolean;
+	error?: string;
 }
 
-/**
- * Represents the structure of a NeoForge install_profile.json
- * after extraction from the installer jar.
- */
-interface NeoForgeProfile extends Profile {
-	install?: {
-		libraries?: any[];
-		[key: string]: any;
-	};
-	version?: {
-		libraries?: any[];
-		[key: string]: any;
-	};
+interface NeoForgeProfile {
+	install?: ForgeInstallProfile;
+	version?: Record<string, unknown> & { id?: string; libraries?: MinecraftLibrary[] };
+	data?: Record<string, { client: string }>;
 	filePath?: string;
 	path?: string;
-	[key: string]: any;
+	processors?: PatcherProcessor[];
+	libraries?: MinecraftLibrary[];
+	error?: { message: string };
 }
 
 /**
@@ -192,7 +167,7 @@ export default class NeoForgeMC extends EventEmitter {
 	 * @param Loader An object containing URLs and patterns for legacy and new metadata/installers.
 	 * @returns      An object with filePath and oldAPI fields, or an error.
 	 */
-	public async downloadInstaller(Loader: LoaderObject): Promise<DownloadInstallerResult> {
+	public async downloadInstaller(Loader: NeoForgeLoaderData): Promise<DownloadInstallerResult> {
 		let build: string | undefined;
 		let neoForgeURL: string;
 		let oldAPI = true;
@@ -323,7 +298,7 @@ export default class NeoForgeMC extends EventEmitter {
 	 * @param pathInstaller Full path to the downloaded NeoForge installer jar.
 	 * @returns A NeoForgeProfile object, or an error if invalid.
 	 */
-	public async extractProfile(pathInstaller: string): Promise<NeoForgeProfile | { error: any }> {
+	public async extractProfile(pathInstaller: string): Promise<NeoForgeProfile | { error: { message: string } }> {
 		const fileContent = await getFileFromArchive(pathInstaller, 'install_profile.json');
 		if (!fileContent) {
 			return { error: { message: 'Invalid neoForge installer' } };
@@ -365,7 +340,7 @@ export default class NeoForgeMC extends EventEmitter {
 		let skipNeoForgeFilter = true;
 
 		if (profile.filePath) {
-			const fileInfo = getPathLibraries(profile.path);
+			const fileInfo = getPathLibraries(profile.path!);
 			this.emit('extract', `Extracting ${fileInfo.name}...`);
 
 			const destFolder = path.resolve(this.options.path, 'libraries', fileInfo.path);
@@ -373,19 +348,19 @@ export default class NeoForgeMC extends EventEmitter {
 				fs.mkdirSync(destFolder, { recursive: true });
 			}
 
-			const archiveContent = await getFileFromArchive(pathInstaller, profile.filePath);
+			const archiveContent = await getFileFromArchive(pathInstaller, profile.filePath) as Buffer | undefined;
 			if (archiveContent) {
 				fs.writeFileSync(path.join(destFolder, fileInfo.name), archiveContent, { mode: 0o777 });
 			}
 		} else if (profile.path) {
 			const fileInfo = getPathLibraries(profile.path);
-			const filesInArchive = await getFileFromArchive(pathInstaller, null, `maven/${fileInfo.path}`);
+			const filesInArchive = await getFileFromArchive(pathInstaller, null, `maven/${fileInfo.path}`) as string[];
 			if (filesInArchive && Array.isArray(filesInArchive)) {
 				for (const file of filesInArchive) {
 					const fileName = path.basename(file);
 					this.emit('extract', `Extracting ${fileName}...`);
 
-					const content = await getFileFromArchive(pathInstaller, file);
+					const content = await getFileFromArchive(pathInstaller, file) as Buffer | undefined;
 					if (!content) continue;
 
 					const destFolder = path.resolve(this.options.path, 'libraries', fileInfo.path);
@@ -396,19 +371,17 @@ export default class NeoForgeMC extends EventEmitter {
 				}
 			}
 		} else {
-			// If no direct reference, do not skip the library filtering
 			skipNeoForgeFilter = false;
 		}
 
-		// If processors exist, we likely need to store client.lzma
 		if (profile.processors?.length) {
 			const universalPath = profile.libraries?.find(lib =>
 				(lib.name || '').startsWith(oldAPI ? 'net.neoforged:forge' : 'net.neoforged:neoforge')
 			);
 
-			const clientData = await getFileFromArchive(pathInstaller, 'data/client.lzma');
+			const clientData = await getFileFromArchive(pathInstaller, 'data/client.lzma') as Buffer | undefined;
 			if (clientData) {
-				const fileInfo = getPathLibraries(profile.path || universalPath.name, '-clientdata', '.lzma');
+				const fileInfo = getPathLibraries(profile.path || universalPath?.name || '', '-clientdata', '.lzma');
 				const destFolder = path.resolve(this.options.path, 'libraries', fileInfo.path);
 
 				if (!fs.existsSync(destFolder)) {
@@ -430,7 +403,7 @@ export default class NeoForgeMC extends EventEmitter {
 	 * @param skipNeoForgeFilter Whether we skip specific "net.minecraftforge:neoforged" libs
 	 * @returns An array of library objects after download, or an error object if something fails
 	 */
-	public async downloadLibraries(profile: NeoForgeProfile, skipNeoForgeFilter: boolean): Promise<any[] | { error: string }> {
+	public async downloadLibraries(profile: NeoForgeProfile, skipNeoForgeFilter: boolean): Promise<MinecraftLibrary[] | { error: string }> {
 		let libraries = profile.version?.libraries || [];
 		const dl = new Downloader();
 		let checkCount = 0;

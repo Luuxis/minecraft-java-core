@@ -6,22 +6,9 @@
 import fs from 'fs';
 import { EventEmitter } from 'events';
 import { fromAnyReadable } from './Index.js';
+import type { DownloadFile } from '../types.js';
 
-/**
- * Describes a single file to be downloaded by the Downloader class.
- */
-export interface DownloadOptions {
-	/** The URL to download from */
-	url: string;
-	/** Local path (including filename) where the file will be saved */
-	path: string;
-	/** The total length of the file (in bytes), if known */
-	length?: number;
-	/** Local folder in which the file's path resides */
-	folder: string;
-	/** Optional type descriptor, used when emitting 'progress' events */
-	type?: string;
-}
+export type { DownloadFile as DownloadOptions };
 
 /**
  * A class responsible for downloading single or multiple files,
@@ -50,7 +37,7 @@ export default class Downloader extends EventEmitter {
 		let downloaded = 0;
 
 		return new Promise<void>((resolve, reject) => {
-			const body = fromAnyReadable(response.body as any);
+			const body = fromAnyReadable(response.body as ReadableStream<Uint8Array>);
 
 			body.on('data', (chunk: Buffer) => {
 				downloaded += chunk.length;
@@ -83,7 +70,7 @@ export default class Downloader extends EventEmitter {
 	 * @param timeout - A timeout in milliseconds for each fetch request
 	 */
 	public async downloadFileMultiple(
-		files: DownloadOptions[],
+		files: DownloadFile[],
 		size: number,
 		limit: number = 1,
 		timeout: number = 10000
@@ -131,7 +118,7 @@ export default class Downloader extends EventEmitter {
 
 				clearTimeout(timeoutId);
 
-				const stream = fromAnyReadable(response.body as any);
+				const stream = fromAnyReadable(response.body as ReadableStream<Uint8Array>);
 
 				stream.on('data', (chunk: Buffer) => {
 					downloaded += chunk.length;
@@ -206,7 +193,7 @@ export default class Downloader extends EventEmitter {
 				return { size, status: 200 };
 			}
 			return false;
-		} catch (e: any) {
+		} catch (e: unknown) {
 			clearTimeout(timeoutId);
 			return false;
 		}

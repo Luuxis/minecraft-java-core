@@ -9,55 +9,26 @@ import { EventEmitter } from 'events';
 
 import { getPathLibraries } from '../../../utils/Index.js';
 import Downloader from '../../../utils/Downloader.js';
+import type { FabricLoaderData, FabricJSON } from '../../../types.js';
 
-/**
- * Represents the Quilt loader configuration within the user's options.
- */
-interface QuiltLoaderConfig {
-	version: string; // e.g., "1.19.2"
-	build: string;   // e.g., "latest", "recommended", or a specific build ID
-}
-
-/**
- * The main options object passed to the Quilt class.
- * You can extend this as needed by your application.
- */
 interface QuiltOptions {
-	path: string;                 // Base path for storing downloaded libraries, etc.
-	loader: QuiltLoaderConfig;    // Loader configuration for Quilt
-	downloadFileMultiple?: number; // Number of concurrent downloads
-	[key: string]: any;          // Allow additional fields as needed
+	path: string;
+	loader: {
+		version: string;
+		build: string;
+	};
+	downloadFileMultiple?: number;
 }
 
-/**
- * Describes the data needed for fetching Quilt metadata and loader JSON.
- * For example:
- * {
- *   metaData: "https://meta.quiltmc.org/v3/versions",
- *   json: "https://meta.quiltmc.org/v3/versions/loader/${version}/${build}/profile/json"
- * }
- */
-interface LoaderObject {
-	metaData: string;
-	json: string; // URL pattern with placeholders like ${version} and ${build}
-}
-
-/**
- * A structure for one library entry in the Quilt loader JSON.
- */
 interface QuiltLibrary {
 	name: string;
 	url: string;
 	rules?: Array<unknown>;
 }
 
-/**
- * The JSON object typically returned by the Quilt API,
- * containing an array of libraries and possibly other fields.
- */
 interface QuiltJSON {
 	libraries: QuiltLibrary[];
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 /**
@@ -82,32 +53,27 @@ export default class Quilt extends EventEmitter {
 	 * @param Loader An object describing where to fetch Quilt metadata and JSON.
 	 * @returns      A QuiltJSON object on success, or an error object if something fails.
 	 */
-	public async downloadJson(Loader: LoaderObject): Promise<QuiltJSON | { error: string }> {
-		let selectedBuild: any;
+	public async downloadJson(Loader: FabricLoaderData): Promise<QuiltJSON | { error: string }> {
+		let selectedBuild: { version: string } | undefined;
 
-		// Fetch the metadata
 		const metaResponse = await fetch(Loader.metaData);
-		const metaData = await metaResponse.json();
+		const metaData: { game: Array<{ version: string }>; loader: Array<{ version: string }> } = await metaResponse.json();
 
-		// Check if the requested Minecraft version is supported
-		const mcVersionExists = metaData.game.find((ver: any) => ver.version === this.options.loader.version);
+		const mcVersionExists = metaData.game.find((ver) => ver.version === this.options.loader.version);
 		if (!mcVersionExists) {
 			return { error: `QuiltMC doesn't support Minecraft ${this.options.loader.version}` };
 		}
 
 		// Gather all available builds for this version
-		const availableBuilds = metaData.loader.map((b: any) => b.version);
+		const availableBuilds = metaData.loader.map((b) => b.version);
 
-		// Determine which build to use
 		if (this.options.loader.build === 'latest') {
 			selectedBuild = metaData.loader[0];
 		} else if (this.options.loader.build === 'recommended') {
-			// Attempt to find a build that isn't labeled "beta"
-			selectedBuild = metaData.loader.find((b: any) => !b.version.includes('beta'));
+			selectedBuild = metaData.loader.find((b) => !b.version.includes('beta'));
 		} else {
-			// Otherwise, match a specific build
 			selectedBuild = metaData.loader.find(
-				(loaderItem: any) => loaderItem.version === this.options.loader.build
+				(loaderItem) => loaderItem.version === this.options.loader.build
 			);
 		}
 
@@ -127,8 +93,8 @@ export default class Quilt extends EventEmitter {
 			const response = await fetch(url);
 			const quiltJson: QuiltJSON = await response.json();
 			return quiltJson;
-		} catch (err: any) {
-			return { error: err.message || 'Failed to fetch or parse Quilt loader JSON' };
+		} catch (err: unknown) {
+			return { error: err instanceof Error ? err.message : 'Failed to fetch or parse Quilt loader JSON' };
 		}
 	}
 

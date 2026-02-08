@@ -7,10 +7,17 @@ import fs from 'fs';
 import os from 'os';
 import semver from 'semver';
 import { getPathLibraries, isold } from '../utils/Index.js';
+import type {
+	LaunchOptions,
+	MinecraftVersionJSON,
+	LoaderJSON,
+	LaunchArguments,
+	MinecraftLibrary,
+	Authenticator,
+	LibraryRule
+} from '../types.js';
 
-/**
- * Maps the Node.js process.platform values to Mojang's library folders.
- */
+/** Maps Node.js platforms to Mojang's library folders */
 const MOJANG_LIBRARY_MAP: Record<string, string> = {
 	win32: 'windows',
 	darwin: 'osx',
@@ -18,90 +25,11 @@ const MOJANG_LIBRARY_MAP: Record<string, string> = {
 };
 
 /**
- * Represents options for memory usage, screen size, extra args, etc.
- * Adapt or expand as needed for your use case.
- */
-export interface LaunchOptions {
-	path: string;              // Base path to Minecraft data folder
-	instance?: string;         // Instance name (if using multi-instance approach)
-	authenticator: any;        // Auth object containing tokens, user info, etc.
-	version?: string;         // Minecraft version
-	bypassOffline?: boolean;   // Bypass offline mode for multiplayer
-	ignore_log4j?: boolean;    // Ignore log4j
-	memory: {
-		min?: string;             // Minimum memory (e.g. "512M", "1G")
-		max?: string;             // Maximum memory (e.g. "4G", "8G")
-	};
-	screen?: {
-		width?: number;
-		height?: number;
-	};
-	GAME_ARGS: Array<string>;  // Additional arguments passed to the game
-	JVM_ARGS: Array<string>;   // Additional arguments passed to the JVM
-	mcp?: string;              // MCP config path (for modded usage)
-}
-
-/**
- * Represents the data structure of a Minecraft version JSON file (simplified).
- * Adapt this interface if your JSON includes more properties.
- */
-export interface VersionJSON {
-	id: string;
-	type: string;
-	assetIndex: {
-		id: string;
-	};
-	assets?: string;          // Name of the assets index
-	mainClass?: string;
-	minecraftArguments?: string; // Legacy format for older MC versions
-	arguments?: {
-		game?: Array<string>;
-		jvm?: Array<string>;
-		'default-user-jvm'?: Array<any>;
-	};
-	libraries?: Array<any>;    // List of library dependencies
-	nativesList?: Array<string>;
-	logging?: any;            // Logging configuration
-}
-
-export interface Library {
-	name: string;
-	loader?: string;
-	natives?: Record<string, string>;
-	rules?: { os?: { name?: string } }[];
-}
-
-/**
- * Represents a loader JSON structure (e.g. Forge or Fabric).
- * Again, adapt as your loader's actual structure requires.
- */
-export interface LoaderJSON {
-	id?: string;
-	mainClass?: string;
-	libraries?: Array<any>;
-	minecraftArguments?: string;
-	isOldForge?: boolean;
-	jarPath?: string;
-}
-
-/**
- * Data structure returned by the class, detailing arguments
- * for launching Minecraft (game args, JVM args, classpath, etc.).
- */
-export interface LaunchArguments {
-	game: Array<string>;
-	jvm: Array<string>;
-	classpath: Array<string>;
-	mainClass?: string;
-}
-
-/**
- * Builds and organizes JVM and game arguments required to launch Minecraft,
- * including optional loader (e.g., Forge) arguments.
+ * Builds and organizes JVM and game arguments required to launch Minecraft.
  */
 export default class MinecraftArguments {
 	private options: LaunchOptions;
-	private authenticator: any;
+	private authenticator: Authenticator;
 
 	constructor(options: LaunchOptions) {
 		this.options = options;
@@ -110,10 +38,8 @@ export default class MinecraftArguments {
 
 	/**
 	 * Gathers all arguments (game, JVM, classpath) and returns them for launching.
-	 * @param versionJson The Minecraft version JSON.
-	 * @param loaderJson  An optional loader JSON (Forge, Fabric, etc.).
 	 */
-	public async GetArguments(versionJson: VersionJSON, loaderJson?: LoaderJSON): Promise<LaunchArguments> {
+	public async GetArguments(versionJson: MinecraftVersionJSON, loaderJson?: LoaderJSON): Promise<LaunchArguments> {
 		const gameArguments = await this.GetGameArguments(versionJson, loaderJson);
 		const jvmArguments = await this.GetJVMArguments(versionJson);
 		const classpathData = await this.GetClassPath(versionJson, loaderJson);
@@ -132,7 +58,7 @@ export default class MinecraftArguments {
 	 * @param versionJson The Minecraft version JSON.
 	 * @param loaderJson  The loader JSON (e.g., Forge) if applicable.
 	 */
-	public async GetGameArguments(versionJson: VersionJSON, loaderJson?: LoaderJSON): Promise<Array<string>> {
+	public async GetGameArguments(versionJson: MinecraftVersionJSON, loaderJson?: LoaderJSON): Promise<Array<string>> {
 		// For older MC versions, arguments may be in `minecraftArguments` instead of `arguments.game`
 		let gameArgs = versionJson.minecraftArguments
 			? versionJson.minecraftArguments.split(' ')
@@ -185,13 +111,13 @@ export default class MinecraftArguments {
 		// Replace placeholders in the game arguments
 		for (let i = 0; i < gameArgs.length; i++) {
 			if (typeof gameArgs[i] === 'object') {
-				// If it's an unexpected object, remove it
 				gameArgs.splice(i, 1);
 				i--;
 				continue;
 			}
-			if (placeholderMap[gameArgs[i]]) {
-				gameArgs[i] = placeholderMap[gameArgs[i]];
+			const arg = gameArgs[i] as string;
+			if (placeholderMap[arg]) {
+				gameArgs[i] = placeholderMap[arg];
 			}
 		}
 
@@ -273,7 +199,7 @@ export default class MinecraftArguments {
 	 * @param existingArgs Existing JVM arguments to check for duplicates.
 	 * @returns Array of default JVM arguments to add.
 	 */
-	private ProcessDefaultUserJVMArgs(versionJson: VersionJSON, existingArgs: Array<string>): Array<string> {
+	private ProcessDefaultUserJVMArgs(versionJson: MinecraftVersionJSON, existingArgs: Array<string>): Array<string> {
 		const defaultUserJVM = versionJson.arguments?.['default-user-jvm'];
 		if (!defaultUserJVM || !Array.isArray(defaultUserJVM)) {
 			return [];
@@ -315,7 +241,7 @@ export default class MinecraftArguments {
 	 * OS-specific options, and any additional arguments supplied by the user.
 	 * @param versionJson The Minecraft version JSON.
 	 */
-	public async GetJVMArguments(versionJson: VersionJSON): Promise<Array<string>> {
+	public async GetJVMArguments(versionJson: MinecraftVersionJSON): Promise<Array<string>> {
 		// Some OS-specific defaults
 		const osSpecificOpts: Record<string, string> = {
 			win32: '-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump',
@@ -399,11 +325,11 @@ export default class MinecraftArguments {
 	 * @param versionJson The Minecraft version JSON.
 	 * @param loaderJson  The loader JSON (e.g., Forge, Fabric) if applicable.
 	 */
-	public async GetClassPath(versionJson: VersionJSON, loaderJson?: LoaderJSON): Promise<{
+	public async GetClassPath(versionJson: MinecraftVersionJSON, loaderJson?: LoaderJSON): Promise<{
 		classpath: Array<string>;
 		mainClass: string | undefined;
 	}> {
-		let combinedLibraries = versionJson.libraries ?? [];
+		let combinedLibraries: MinecraftLibrary[] = versionJson.libraries ?? [];
 
 		// If a loader JSON is provided, merge its libraries with the base MC version
 		if (loaderJson?.libraries) {
@@ -431,11 +357,10 @@ export default class MinecraftArguments {
 			}
 		}
 
-		const latest: Record<string, Library> = Object.fromEntries(
-			Array.from(map.entries()).map(([key, value]) => [key, value as Library])
+		const latest: Record<string, MinecraftLibrary & { version: string }> = Object.fromEntries(
+			Array.from(map.entries()).map(([key, value]) => [key, value as MinecraftLibrary & { version: string }])
 		);
 
-		// Prepare to accumulate all library paths
 		const librariesList: string[] = [];
 		for (const lib of Object.values(latest)) {
 			// Skip certain logging libraries if flagged (e.g., in Forge's "loader" property)

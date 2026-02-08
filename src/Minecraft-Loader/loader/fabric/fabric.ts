@@ -9,64 +9,21 @@ import path from 'path';
 
 import { getPathLibraries } from '../../../utils/Index.js';
 import Downloader from '../../../utils/Downloader.js';
+import type { FabricLoaderData, FabricJSON } from '../../../types.js';
 
-/**
- * Represents the options needed by the FabricMC class.
- * You can expand this if your code requires more specific fields.
- */
 interface FabricOptions {
-	path: string;                  // Base path to your game or library folder
-	downloadFileMultiple?: number; // Max simultaneous downloads (if supported by Downloader)
+	path: string;
+	downloadFileMultiple?: number;
 	loader: {
-		version: string;    // Minecraft version
-		build: string;      // Fabric build (e.g. "latest", "recommended", or a specific version)
+		version: string;
+		build: string;
 	};
 }
 
-/**
- * Represents the Loader object that holds metadata URLs and JSON paths.
- * For instance, it might look like:
- * {
- *   metaData: 'https://meta.fabricmc.net/v2/versions',
- *   json: 'https://meta.fabricmc.net/v2/versions/loader/${version}/${build}/profile/json'
- * }
- */
-interface LoaderObject {
-	metaData: string;
-	json: string; // Template string with placeholders like ${version} and ${build}
-}
-
-/**
- * Represents the structure of your metadata, including
- * game versions and loader builds. Adapt as needed.
- */
-interface MetaData {
-	game: Array<{
-		version: string;
-		stable: boolean;
-	}>;
-	loader: Array<{
-		version: string;
-		stable: boolean;
-	}>;
-}
-
-/**
- * Structure of a library entry in the Fabric JSON manifest.
- * Extend this interface if you have additional fields like "rules", etc.
- */
 interface FabricLibrary {
 	name: string;
 	url: string;
-	rules?: Array<any>;
-}
-
-/**
- * The JSON object returned by Fabric metadata endpoints.
- */
-interface FabricJSON {
-	libraries: FabricLibrary[];
-	[key: string]: any;
+	rules?: Array<Record<string, unknown>>;
 }
 
 /**
@@ -89,12 +46,11 @@ export default class FabricMC extends EventEmitter {
 	 * @param Loader A LoaderObject describing metadata and json URL templates.
 	 * @returns A JSON object representing the Fabric loader profile, or an error object.
 	 */
-	public async downloadJson(Loader: LoaderObject): Promise<FabricJSON | { error: string }> {
+	public async downloadJson(Loader: FabricLoaderData): Promise<FabricJSON | { error: string }> {
 		let buildInfo: { version: string; stable: boolean } | undefined;
 
-		// Fetch the metadata
 		let response = await fetch(Loader.metaData);
-		let metaData: MetaData = await response.json();
+		let metaData: { game: Array<{ version: string; stable: boolean }>; loader: Array<{ version: string; stable: boolean }> } = await response.json();
 
 		// Check if the Minecraft version is supported
 		const version = metaData.game.find(v => v.version === this.options.loader.version);
@@ -126,8 +82,8 @@ export default class FabricMC extends EventEmitter {
 			const result = await fetch(url);
 			const fabricJson: FabricJSON = await result.json();
 			return fabricJson;
-		} catch (err: any) {
-			return { error: err.message || 'An error occurred while fetching Fabric JSON' };
+		} catch (err: unknown) {
+			return { error: err instanceof Error ? err.message : 'An error occurred while fetching Fabric JSON' };
 		}
 	}
 

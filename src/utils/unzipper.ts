@@ -1,11 +1,6 @@
 import fs from 'fs';
 import zlib from 'zlib';
-
-interface ZipEntry {
-    entryName: string;
-    isDirectory: boolean;
-    getData: () => Buffer;
-}
+import type { ZipEntry } from '../types.js';
 
 export default class Unzipper {
     private entries: ZipEntry[] = [];

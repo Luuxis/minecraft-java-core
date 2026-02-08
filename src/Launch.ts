@@ -18,198 +18,23 @@ import argumentsMinecraft from './Minecraft/Minecraft-Arguments.js';
 
 import { isold } from './utils/Index.js';
 import Downloader from './utils/Downloader.js';
+import type {
+	LaunchOptions,
+	LaunchArguments,
+	LoaderArguments,
+	LoaderJSON,
+	MinecraftVersionJSON,
+	JavaDownloadResult,
+	DownloadFile,
+} from './types.js';
 
-type loader = {
-	/**
-	 * Path to loader directory. Relative to absolute path to Minecraft's root directory (config option `path`).
-	 * 
-	 * If `undefined`, defaults to `.minecraft/loader/<loader_type>`.
-	 * 
-	 * Example: `'fabricfiles'`.
-	 */
-	path?: string,
-	/**
-	 * Loader type. 
-	 * 
-	 * Acceptable values: `'forge'`, `'neoforge'`, `'fabric'`, `'legacyfabric'`, `'quilt'`.
-	 */
-	type?: string,
-	/**
-	 * Loader build (version).
-	 * 
-	 * Acceptable values: `'latest'`, `'recommended'`, actual version.
-	 * 
-	 * Example: `'0.16.3'`
-	 */
-	build?: string,
-	/**
-	 * Should the launcher use a loader?
-	 */
-	enable?: boolean
-}
-
-/**
- * Screen options.
- */
-type screen = {
-	width?: number,
-	height?: number,
-	/**
-	 * Should Minecraft be started in fullscreen mode?
-	 */
-	fullscreen?: boolean
-}
-
-/**
- * Memory limits
- */
-type memory = {
-	/**
-	 * Sets the `-Xms` JVM argument. This is the initial memory usage.
-	 */
-	min?: string,
-	/**
-	 * Sets the `-Xmx` JVM argument. This is the limit of memory usage.
-	 */
-	max?: string
-}
-
-/** 
- * Java download options
- */
-type javaOPTS = {
-	/**
-	 * Absolute path to Java binaries directory. 
-	 * 
-	 * If set, expects Java to be already downloaded. If `undefined`, downloads Java and sets it automatically.
-	 * 
-	 * Example: `'C:\Program Files\Eclipse Adoptium\jdk-21.0.2.13-hotspot\bin'`
-	 */
-	path?: string,
-	/** 
-	 * Java version number.
-	 * 
-	 * If set, fetched from https://api.adoptium.net.
-	 * If `undefined`, fetched from [Mojang](https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json).
-	 * 
-	 * Example: `21`
-	 */
-	version?: string,
-	/** 
-	 * Java image type. Acceptable values: `'jdk'`, `'jre'`, `'testimage'`, `'debugimage'`, `'staticlibs'`, `'sources'`, `'sbom'`.
-	 * 
-	 * Using `jre` is recommended since it only has what's needed.
-	 */
-	type: string
-}
-
-/** 
- * Launch options.
- */
-export type LaunchOPTS = {
-	/**
-	 * URL to the launcher backend. Refer to [Selvania Launcher Wiki](https://github.com/luuxis/Selvania-Launcher/blob/master/docs/wiki_EN-US.md) for setup instructions.
-	 */
-	url?: string | null,
-	/**
-	 * Something to Authenticate the player. 
-	 * 
-	 * Refer to `Mojang`, `Microsoft` or `AZauth` classes.
-	 * 
-	 * Example: `await Mojang.login('Luuxis')`
-	 */
-	authenticator: any,
-	/**
-	 * Connection timeout in milliseconds.
-	 */
-	timeout?: number,
-	/**
-	 * Absolute path to Minecraft's root directory.
-	 * 
-	 * Example: `'%appdata%/.minecraft'`
-	 */
-	path: string,
-	/** 
-	 * Minecraft version.
-	 * 
-	 * Example: `'1.20.4'`
-	 */
-	version: string,
-	/**
-	 * Path to instance directory. Relative to absolute path to Minecraft's root directory (config option `path`).
-	 * This separates game files (e.g. versions, libraries, assets) from game data (e.g. worlds, resourcepacks, options).
-	 * 
-	 * Example: `'PokeMoonX'`
-	 */
-	instance?: string,
-	/**
-	 * Should Minecraft process be independent of launcher?
-	 */
-	detached?: boolean,
-	/**
-	 * How many concurrent downloads can be in progress at once.
-	 */
-	downloadFileMultiple?: number,
-	/**
-	 * Should the launcher bypass offline mode?
-	 * 
-	 * If `true`, the launcher will not check if the user is online.
-	 */
-	bypassOffline?: boolean,
-	/**
-	 * Intel Macs with dedicated graphics cards will use the dedicated card instead of the integrated card.
-	 */
-	intelEnabledMac?: boolean,
-	/**
-	 * Ignore log4j.
-	 */
-	ignore_log4j?: boolean,
-	/**
-	 * Loader config
-	 */
-	loader: loader,
-	/**
-	 * MCPathcer directory. (idk actually luuxis please verify this)
-	 * 
-	 * If `instance` if set, relative to it.
-	 * If `instance` is `undefined`, relative to `path`.
-	 */
-	mcp: any,
-	/**
-	 * Should game files be verified each launch?
-	 */
-	verify: boolean,
-	/**
-	 * Files to ignore from instance. (idk actually luuxis please verify this)
-	 */
-	ignored: string[],
-	/**
-	 * Custom JVM arguments. Read more on [wiki.vg](https://wiki.vg/Launching_the_game#JVM_Arguments)
-	 */
-	JVM_ARGS: string[],
-	/**
-	 * Custom game arguments. Read more on [wiki.vg](https://wiki.vg/Launching_the_game#Game_Arguments)
-	 */
-	GAME_ARGS: string[],
-	/**
-	 * Java options.
-	 */
-	java: javaOPTS,
-	/**
-	 * Screen options.
-	 */
-	screen: screen,
-	/**
-	 * Memory limit options.
-	 */
-	memory: memory
-};
+export type LaunchOPTS = LaunchOptions;
 
 export default class Launch extends EventEmitter {
-	options: LaunchOPTS;
+	options: LaunchOptions;
 
-	async Launch(opt: LaunchOPTS) {
-		const defaultOptions: LaunchOPTS = {
+	async Launch(opt: LaunchOptions) {
+		const defaultOptions: LaunchOptions = {
 			url: null,
 			authenticator: null,
 			timeout: 10000,
@@ -253,7 +78,7 @@ export default class Launch extends EventEmitter {
 				max: '2G'
 			},
 			...opt,
-		};
+		} as LaunchOptions;
 
 		this.options = defaultOptions;
 		this.options.path = path.resolve(this.options.path).replace(/\\/g, '/');
@@ -278,17 +103,17 @@ export default class Launch extends EventEmitter {
 
 
 	async start() {
-		let data: any = await this.DownloadGame();
-		if (data.error) return this.emit('error', data);
+		let data = await this.DownloadGame();
+		if (!data || 'error' in data) return this.emit('error', data);
 		let { minecraftJson, minecraftLoader, minecraftVersion, minecraftJava } = data;
 
-		let minecraftArguments: any = await new argumentsMinecraft(this.options).GetArguments(minecraftJson, minecraftLoader);
-		if (minecraftArguments.error) return this.emit('error', minecraftArguments);
+		let minecraftArguments: LaunchArguments | { error: string } = await new argumentsMinecraft(this.options).GetArguments(minecraftJson, minecraftLoader);
+		if ('error' in minecraftArguments) return this.emit('error', minecraftArguments);
 
-		let loaderArguments: any = await new loaderMinecraft(this.options).GetArguments(minecraftLoader, minecraftVersion);
-		if (loaderArguments.error) return this.emit('error', loaderArguments);
+		let loaderArguments: LoaderArguments | { error: string } = await new loaderMinecraft(this.options).GetArguments(minecraftLoader, minecraftVersion);
+		if ('error' in loaderArguments) return this.emit('error', loaderArguments);
 
-		let Arguments: any = [
+		let Arguments: string[] = [
 			...minecraftArguments.jvm,
 			...minecraftArguments.classpath,
 			...loaderArguments.jvm,
@@ -297,7 +122,7 @@ export default class Launch extends EventEmitter {
 			...loaderArguments.game
 		]
 
-		let java: any = this.options.java.path ? this.options.java.path : minecraftJava.path;
+		let java: string = this.options.java.path ? this.options.java.path : minecraftJava.path;
 		let logs = this.options.instance ? `${this.options.path}/instances/${this.options.instance}` : this.options.path;
 		if (!fs.existsSync(logs)) fs.mkdirSync(logs, { recursive: true });
 
@@ -315,10 +140,10 @@ export default class Launch extends EventEmitter {
 		minecraftDebug.on('close', (code) => this.emit('close', 'Minecraft closed'))
 	}
 
-	async DownloadGame() {
+	async DownloadGame(): Promise<{ minecraftJson: MinecraftVersionJSON; minecraftLoader: LoaderJSON | null; minecraftVersion: string; minecraftJava: JavaDownloadResult } | void> {
 		const InfoVersion = await new jsonMinecraft(this.options).GetInfoVersion();
-		let loaderJson: any = null;
-		if ('error' in InfoVersion) return this.emit('error', InfoVersion);
+		let loaderJson: LoaderJSON | null = null;
+		if ('error' in InfoVersion) { this.emit('error', InfoVersion); return; }
 
 		const { json, version } = InfoVersion;
 
@@ -327,42 +152,42 @@ export default class Launch extends EventEmitter {
 		const bundle = new bundleMinecraft(this.options)
 		const java = new javaMinecraft(this.options)
 
-		java.on('progress', (progress: any, size: any, element: any) => {
+		java.on('progress', (progress: number, size: number, element: string) => {
 			this.emit('progress', progress, size, element)
 		});
 
-		java.on('extract', (progress: any) => {
+		java.on('extract', (progress: string) => {
 			this.emit('extract', progress)
 		});
 
-		const gameLibraries: any = await libraries.Getlibraries(json);
-		const gameLogging: any = await libraries.GetLogging();
-		const gameAssetsOther: any = await libraries.GetAssetsOthers(this.options.url);
-		const gameAssets: any = await new assetsMinecraft(this.options).getAssets(json);
-		const gameJava: any = this.options.java.path ? { files: [] } : await java.getJavaFiles(json);
+		const gameLibraries: DownloadFile[] = await libraries.Getlibraries(json);
+		const gameLogging: DownloadFile[] = await libraries.GetLogging();
+		const gameAssetsOther: DownloadFile[] = await libraries.GetAssetsOthers(this.options.url);
+		const gameAssets: DownloadFile[] = await new assetsMinecraft(this.options).getAssets(json);
+		const gameJava: JavaDownloadResult = this.options.java.path ? { files: [], path: this.options.java.path } : await java.getJavaFiles(json);
 
 
-		if (gameJava.error) return gameJava
+		if ('error' in gameJava) { this.emit('error', gameJava); return; }
 
-		const filesList: any = await bundle.checkBundle([...gameLibraries, ...gameLogging, ...gameAssetsOther, ...gameAssets, ...gameJava.files]);
+		const filesList: DownloadFile[] = await bundle.checkBundle([...gameLibraries, ...gameLogging, ...gameAssetsOther, ...gameAssets, ...gameJava.files]);
 
 		if (filesList.length > 0) {
 			let downloader = new Downloader();
 			let totsize = await bundle.getTotalSize(filesList);
 
-			downloader.on("progress", (DL: any, totDL: any, element: any) => {
+			downloader.on("progress", (DL: number, totDL: number, element: string) => {
 				this.emit("progress", DL, totDL, element);
 			});
 
-			downloader.on("speed", (speed: any) => {
+			downloader.on("speed", (speed: number) => {
 				this.emit("speed", speed);
 			});
 
-			downloader.on("estimated", (time: any) => {
+			downloader.on("estimated", (time: number) => {
 				this.emit("estimated", time);
 			});
 
-			downloader.on("error", (e: any) => {
+			downloader.on("error", (e: Error) => {
 				this.emit("error", e);
 			});
 
@@ -372,26 +197,26 @@ export default class Launch extends EventEmitter {
 		if (this.options.loader.enable === true) {
 			const loaderInstall = new loaderMinecraft(this.options)
 
-			loaderInstall.on('extract', (extract: any) => {
+			loaderInstall.on('extract', (extract: string) => {
 				this.emit('extract', extract);
 			});
 
-			loaderInstall.on('progress', (progress: any, size: any, element: any) => {
+			loaderInstall.on('progress', (progress: number, size: number, element: string) => {
 				this.emit('progress', progress, size, element);
 			});
 
-			loaderInstall.on('check', (progress: any, size: any, element: any) => {
+			loaderInstall.on('check', (progress: number, size: number, element: string) => {
 				this.emit('check', progress, size, element);
 			});
 
-			loaderInstall.on('patch', (patch: any) => {
+			loaderInstall.on('patch', (patch: string) => {
 				this.emit('patch', patch);
 			});
 
 			const jsonLoader = await loaderInstall.GetLoader(version, this.options.java.path ? this.options.java.path : gameJava.path)
-				.then((data: any) => data)
-				.catch((err: any) => err);
-			if (jsonLoader.error) return jsonLoader;
+				.then((data: LoaderJSON) => data)
+				.catch((err: Error) => ({ error: err.message }));
+			if ('error' in jsonLoader) { this.emit('error', jsonLoader); return; }
 			loaderJson = jsonLoader;
 		}
 

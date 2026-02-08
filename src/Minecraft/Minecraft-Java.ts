@@ -10,60 +10,24 @@ import EventEmitter from 'events';
 
 import { getFileFromArchive } from '../utils/Index.js';
 import Downloader from '../utils/Downloader.js';
+import type {
+	LaunchOptions,
+	MinecraftVersionJSON,
+	JavaDownloadResult,
+	JavaFileItem,
+	ArchiveEntry
+} from '../types.js';
 
-/**
- * Represents the Java-specific options a user might pass to the downloader.
- */
-export interface JavaDownloaderOptions {
-	path: string;                 // Base path to store the downloaded Java runtime
-	java: {
-		version?: string;           // Force a specific Java version (e.g., "17")
-		type: string;               // Image type for Adoptium (e.g., "jdk" or "jre")
-	};
-	intelEnabledMac?: boolean;    // If `true`, allows using Intel-based Java on Apple Silicon
-}
-
-/**
- * A generic JSON structure for the Minecraft version, which may include
- * a javaVersion property. Adjust as needed to fit your actual data.
- */
-export interface MinecraftVersionJSON {
-	javaVersion?: {
-		component?: string;   // e.g., "jre-legacy" or "java-runtime-alpha"
-		majorVersion?: number; // e.g., 8, 17, 19
-	};
-}
-
-/**
- * Structure returned by getJavaFiles() and getJavaOther().
- */
-export interface JavaDownloadResult {
-	files: JavaFileItem[];
-	path: string;      // Local path to the java executable
-	error?: boolean;   // Indicate an error if any
-	message?: string;  // Error message if error is true
-}
-
-/**
- * Represents a single Java file entry that might need downloading.
- */
-export interface JavaFileItem {
-	path: string;        // Relative path to store the file under the runtime directory
-	executable?: boolean;
-	sha1?: string;
-	size?: number;
-	url?: string;
-	type?: string;       // "Java" or other type
-}
+export type { JavaDownloadResult, JavaFileItem };
 
 /**
  * Manages the download and extraction of the correct Java runtime for Minecraft.
- * It supports both Mojang's curated list of Java runtimes and the Adoptium fallback.
+ * It supports both Mojang's curated list and Azul fallback.
  */
 export default class JavaDownloader extends EventEmitter {
-	private options: JavaDownloaderOptions;
+	private options: LaunchOptions;
 
-	constructor(options: JavaDownloaderOptions) {
+	constructor(options: LaunchOptions) {
 		super();
 		this.options = options;
 	}
@@ -199,7 +163,7 @@ export default class JavaDownloader extends EventEmitter {
 				url: javaVersions.download_url
 			})
 
-			const entries = await getFileFromArchive(path.join(pathFolder, javaVersions.name), null, null, true);
+			const entries = await getFileFromArchive(path.join(pathFolder, javaVersions.name), null, null, true) as ArchiveEntry[];
 
 			for (const entry of entries) {
 				if (entry.name.startsWith('META-INF')) continue;

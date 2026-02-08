@@ -5,57 +5,15 @@
 
 import { Buffer } from 'node:buffer';
 import crypto from 'crypto';
+import type {
+	MicrosoftClientType,
+	MinecraftSkin,
+	MinecraftProfile,
+	AuthError,
+	MicrosoftAuthResponse as AuthResponse
+} from '../types.js';
 
-// Possible client types (Electron, NW.js, or terminal usage)
-export type MicrosoftClientType = 'electron' | 'nwjs' | 'terminal';
-
-// Basic structure for a Minecraft profile, with optional base64 fields
-export interface MinecraftSkin {
-	id?: string;
-	state?: string;
-	url?: string;
-	variant?: string;
-	alias?: string;
-	base64?: string; // We add base64 representation after fetching
-}
-
-export interface MinecraftProfile {
-	id: string;
-	name: string;
-	skins?: MinecraftSkin[];
-	capes?: MinecraftSkin[];
-}
-
-// Structure for errors returned by the different steps in authentication
-export interface AuthError {
-	error: string;
-	errorType?: string;
-	[key: string]: any;
-}
-
-// Main structure for successful authentication
-export interface AuthResponse {
-	access_token: string;
-	client_token: string;
-	uuid: string;
-	name: string;
-	refresh_token: string;
-	user_properties: string;
-	meta: {
-		type: 'Xbox';
-		access_token_expires_in: number;
-		demo: boolean;
-	};
-	xboxAccount: {
-		xuid: string;
-		gamertag: string;
-		ageGroup: string;
-	};
-	profile: {
-		skins?: MinecraftSkin[];
-		capes?: MinecraftSkin[];
-	};
-}
+export type { MicrosoftClientType, MinecraftSkin, MinecraftProfile, AuthError, AuthResponse };
 
 // Utility function to fetch and convert an image to base64
 async function getBase64(url: string): Promise<string> {
@@ -154,7 +112,7 @@ export default class Microsoft {
 	 * @param acc A previously obtained AuthResponse object.
 	 * @returns   Updated AuthResponse (with new token if needed) or an error object.
 	 */
-	public async refresh(acc: AuthResponse | any): Promise<AuthResponse | AuthError> {
+	public async refresh(acc: AuthResponse): Promise<AuthResponse | AuthError> {
 		const timeStamp = Math.floor(Date.now());
 
 		// If the token is still valid for at least 2 more hours, just re-fetch the profile
@@ -195,7 +153,7 @@ export default class Microsoft {
 	 * @param oauth2 The token object returned by the Microsoft OAuth endpoint.
 	 * @returns      A fully populated AuthResponse object or an error.
 	 */
-	private async getAccount(oauth2: any): Promise<AuthResponse | AuthError> {
+	private async getAccount(oauth2: { access_token: string; refresh_token: string }): Promise<AuthResponse | AuthError> {
 		const authenticateResponse = await fetch('https://user.auth.xboxlive.com/user/authenticate', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },

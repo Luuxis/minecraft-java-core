@@ -6,42 +6,16 @@
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-
-/**
- * Minimal interface describing a single library entry in the version JSON.
- * Adjust as needed to reflect your actual library data structure.
- */
-interface MinecraftLibrary {
-	name: string;
-	// You may include other fields like 'downloads', 'natives', etc. if needed
-}
-
-/**
- * Represents the structure of a Minecraft version JSON.
- * You can expand this interface based on your actual usage.
- */
-interface MinecraftVersion {
-	libraries: MinecraftLibrary[];
-	// Additional fields like 'id', 'mainClass', etc. can go here
-}
-
-/**
- * Options for constructing the MinecraftLoader, if needed.
- * Extend or remove fields to match your actual requirements.
- */
-interface LoaderOptions {
-	// Add any relevant configuration fields if needed
-	[key: string]: unknown;
-}
+import type { MinecraftVersionJSON, MinecraftLibrary, LaunchOptions } from '../types.js';
 
 /**
  * This class modifies the version JSON for ARM-based Linux systems,
- * specifically handling LWJGL library replacements for versions 2.9.x or custom LWJGL versions.
+ * specifically handling LWJGL library replacements.
  */
 export default class MinecraftLoader {
-	private options: LoaderOptions;
+	private options: LaunchOptions;
 
-	constructor(options: LoaderOptions) {
+	constructor(options: LaunchOptions) {
 		this.options = options;
 	}
 
@@ -52,7 +26,7 @@ export default class MinecraftLoader {
 	 * @param version A MinecraftVersion object containing a list of libraries
 	 * @returns The same version object, but with updated libraries for ARM-based Linux
 	 */
-	public async ProcessJson(version: MinecraftVersion): Promise<MinecraftVersion> {
+	public async ProcessJson(version: MinecraftVersionJSON): Promise<MinecraftVersionJSON> {
 		// Maps Node's arm architecture to the expected LWJGL naming
 		const archMapping: Record<string, string> = {
 			arm64: 'aarch64',
@@ -98,7 +72,7 @@ export default class MinecraftLoader {
 
 			// Read the appropriate LWJGL JSON (e.g., "2.9.4.json" or "<versionLWJGL>.json")
 			const lwjglNativesContent = fs.readFileSync(lwjglPath, 'utf-8');
-			const lwjglNatives = JSON.parse(lwjglNativesContent) as MinecraftVersion;
+			const lwjglNatives = JSON.parse(lwjglNativesContent) as { libraries: MinecraftLibrary[] };
 
 			// Append the ARM-compatible libraries
 			version.libraries.push(...lwjglNatives.libraries);

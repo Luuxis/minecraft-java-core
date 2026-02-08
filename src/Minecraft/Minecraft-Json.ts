@@ -5,63 +5,25 @@
 
 import os from 'os';
 import MinecraftNativeLinuxARM from './Minecraft-Lwjgl-Native.js';
+import type {
+	MinecraftVersionJSON,
+	VersionEntry,
+	MojangVersionManifest,
+	GetInfoVersionResult,
+	GetInfoVersionError,
+	LaunchOptions
+} from '../types.js';
 
-/**
- * Basic structure for options passed to the Json class.
- * Modify or expand based on your actual usage.
- */
-export interface JsonOptions {
-	version: string;     // The targeted Minecraft version (e.g. "1.19", "latest_release", etc.)
-	[key: string]: any;  // Include any additional fields needed by your code
-}
-
-/**
- * Represents a single version entry from Mojang's version manifest.
- */
-export interface VersionEntry {
-	id: string;
-	type: string;
-	url: string;
-	time: string;
-	releaseTime: string;
-}
-
-/**
- * Structure of the Mojang version manifest (simplified).
- */
-export interface MojangVersionManifest {
-	latest: {
-		release: string;
-		snapshot: string;
-	};
-	versions: VersionEntry[];
-}
-
-/**
- * Structure returned by the getInfoVersion method on success.
- */
-export interface GetInfoVersionResult {
-	InfoVersion: VersionEntry;
-	json: any;       // The specific version JSON fetched from Mojang
-	version: string; // The final resolved version (e.g., "1.19" if "latest_release" was given)
-}
-
-/**
- * Structure returned by getInfoVersion if an error occurs (version not found).
- */
-export interface GetInfoVersionError {
-	error: true;
-	message: string;
-}
+export type { GetInfoVersionResult, GetInfoVersionError };
 
 /**
  * This class retrieves Minecraft version information from Mojang's
  * version manifest, and optionally processes the JSON for ARM-based Linux.
  */
 export default class Json {
-	private readonly options: JsonOptions;
+	private readonly options: LaunchOptions;
 
-	constructor(options: JsonOptions) {
+	constructor(options: LaunchOptions) {
 		this.options = options;
 	}
 

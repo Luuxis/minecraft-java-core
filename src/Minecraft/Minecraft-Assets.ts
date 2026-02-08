@@ -3,38 +3,7 @@
  * Luuxis License v1.0 (voir fichier LICENSE pour les détails en FR/EN)
  */
 import fs from 'fs';
-
-/**
- * Represents the general structure of the options passed to MinecraftAssets.
- * You can expand or modify these fields as necessary for your specific use case.
- */
-export interface MinecraftAssetsOptions {
-	path: string;        // Base path to the Minecraft data folder
-	instance?: string;   // Instance name (if using multi-instance setup)
-}
-
-/**
- * Represents a simplified version of the Minecraft version JSON structure.
- */
-export interface VersionJSON {
-	assetIndex?: {
-		id: string;     // e.g. "1.19"
-		url: string;    // URL where the asset index JSON can be fetched
-	};
-	assets?: string;     // e.g. "1.19"
-}
-
-/**
- * Represents a single asset object in the final array returned by getAssets().
- */
-export interface AssetItem {
-	type: 'CFILE' | 'Assets';
-	path: string;
-	content?: string;         // Used if type = "CFILE"
-	sha1?: string;            // Used if type = "Assets"
-	size?: number;            // Used if type = "Assets"
-	url?: string;             // Used if type = "Assets"
-}
+import type { AssetItem, LaunchOptions, MinecraftVersionJSON } from '../types.js';
 
 /**
  * Class responsible for handling Minecraft asset index fetching
@@ -42,9 +11,9 @@ export interface AssetItem {
  */
 export default class MinecraftAssets {
 	private assetIndex: { id: string; url: string } | undefined;
-	private readonly options: MinecraftAssetsOptions;
+	private readonly options: LaunchOptions;
 
-	constructor(options: MinecraftAssetsOptions) {
+	constructor(options: LaunchOptions) {
 		this.options = options;
 	}
 
@@ -56,7 +25,7 @@ export default class MinecraftAssets {
 	 * @param versionJson A JSON object containing an "assetIndex" field.
 	 * @returns An array of AssetItem objects with download info.
 	 */
-	public async getAssets(versionJson: VersionJSON): Promise<AssetItem[]> {
+	public async getAssets(versionJson: MinecraftVersionJSON): Promise<AssetItem[]> {
 		this.assetIndex = versionJson.assetIndex;
 		if (!this.assetIndex) {
 			// If there's no assetIndex, there's nothing to download.
@@ -103,7 +72,7 @@ export default class MinecraftAssets {
 	 *
 	 * @param versionJson A JSON object that has an "assets" property for the index name.
 	 */
-	public copyAssets(versionJson: VersionJSON): void {
+	public copyAssets(versionJson: MinecraftVersionJSON): void {
 		// Determine the legacy directory where resources should go
 		let legacyDirectory = `${this.options.path}/resources`;
 		if (this.options.instance) {

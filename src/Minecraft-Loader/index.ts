@@ -7,66 +7,30 @@ import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
 import { loader as loaderFunction } from '../utils/Index.js';
+import type {
+	LoaderType,
+	LoaderResult,
+	LoaderDownloaderOptions,
+	LoaderDownloaderConfig
+} from '../types.js';
 
-// Loader sub-classes (Forge, NeoForge, etc.)
-// Adjust the import paths based on your project's actual file structure.
+// Loader sub-classes
 import Forge from './loader/forge/forge.js';
 import NeoForge from './loader/neoForge/neoForge.js';
 import Fabric from './loader/fabric/fabric.js';
 import LegacyFabric from './loader/legacyfabric/legacyFabric.js';
 import Quilt from './loader/quilt/quilt.js';
 
-/**
- * Represents the user's selected loader type (Forge, Fabric, etc.).
- * Extend or refine as your application requires.
- */
-export type LoaderType = 'forge' | 'neoforge' | 'fabric' | 'legacyfabric' | 'quilt';
-
-/**
- * Configuration for the loader (build, version, etc.).
- * For instance: { type: "forge", version: "1.19.2", build: "latest" }
- */
-export interface LoaderConfig {
-	type: LoaderType;
-	version: string;    // Minecraft version
-	build: string;      // e.g., "latest", "recommended", or a specific numeric build
-	config: {
-		javaPath: string;
-		minecraftJar: string;
-		minecraftJson: string;
-	};
-	// Feel free to add additional fields if needed
-}
-
-/**
- * The overall options passed to our Loader class,
- * containing path information and loader configuration.
- */
-export interface LoaderOptions {
-	path: string;        // Base directory for storing version files, etc.
-	loader: LoaderConfig;
-	[key: string]: any;  // Allow additional fields as necessary
-}
-
-/**
- * A generic type to represent the JSON objects returned by
- * Forge, NeoForge, Fabric, etc., after an installation.
- */
-export interface LoaderResult {
-	id?: string;         // For example, "1.19.2-Forge" or "fabric-loader-1.14"
-	error?: string;      // If an error occurs, we store a message here
-	[key: string]: any;  // Additional fields depending on the loader
-}
+export type { LoaderType };
 
 /**
  * The main Loader class that orchestrates installation of different
  * Minecraft mod loaders (Forge, Fabric, LegacyFabric, Quilt, etc.).
- * It extends EventEmitter to provide "check", "progress", "extract", "patch", and "error" events.
  */
 export default class Loader extends EventEmitter {
-	private readonly options: LoaderOptions;
+	private readonly options: LoaderDownloaderOptions;
 
-	constructor(options: LoaderOptions) {
+	constructor(options: LoaderDownloaderOptions) {
 		super();
 		this.options = options;
 	}
@@ -151,8 +115,8 @@ export default class Loader extends EventEmitter {
 		});
 
 		// 1. Download installer
-		const installer: any = await forge.downloadInstaller(LoaderData);
-		if (installer.error) return installer; // e.g., { error: "..." }
+		const installer: any = await forge.downloadInstaller(LoaderData as any);
+		if (installer.error) return installer;
 
 		const profile: any = await forge.extractProfile(installer.filePath);
 		if (profile.error) return profile;
@@ -205,8 +169,8 @@ export default class Loader extends EventEmitter {
 			this.emit('patch', patch);
 		});
 
-		const installer = await neoForge.downloadInstaller(LoaderData);
-		if (installer.error) return installer;
+		const installer = await neoForge.downloadInstaller(LoaderData as any);
+		if (installer.error) return installer as LoaderResult;
 
 		// Extract the main profile
 		const profile: any = await neoForge.extractProfile(installer.filePath);
@@ -318,13 +282,13 @@ export default class Loader extends EventEmitter {
 		});
 
 		const json = await quilt.downloadJson(LoaderData);
-		if (json.error) return json;
+		if ('error' in json && json.error) return json as LoaderResult;
 
 		if ("id" in json) {
-			const destination = path.resolve(this.options.path, 'versions', json.id);
+			const destination = path.resolve(this.options.path, 'versions', json.id as string);
 			if (!fs.existsSync(destination)) fs.mkdirSync(destination, { recursive: true });
-			fs.writeFileSync(path.resolve(destination, `${json.id}.json`), JSON.stringify(json, null, 4));
-			fs.cpSync(path.resolve(this.options.loader.config.minecraftJar), path.resolve(destination, `${json.id}.jar`));
+			fs.writeFileSync(path.resolve(destination, `${json.id as string}.json`), JSON.stringify(json, null, 4));
+			fs.cpSync(path.resolve(this.options.loader.config.minecraftJar), path.resolve(destination, `${json.id as string}.jar`));
 		}
 		if ("libraries" in json) {
 			await quilt.downloadLibraries(json);

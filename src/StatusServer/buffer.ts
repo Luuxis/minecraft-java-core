@@ -3,11 +3,11 @@
  * Luuxis License v1.0 (voir fichier LICENSE pour les détails en FR/EN)
  */
 
-function CustomBuffer(existingBuffer: any = Buffer.alloc(48)) {
+function CustomBuffer(this: any, existingBuffer: Buffer = Buffer.alloc(48)) {
     let buffer = existingBuffer;
     let offset = 0;
 
-    this.writeletInt = (val: any) => {
+    this.writeletInt = (val: number) => {
         while (true) {
             if ((val & 0xFFFFFF80) == 0) {
                 return this.writeUByte(val);
@@ -17,21 +17,21 @@ function CustomBuffer(existingBuffer: any = Buffer.alloc(48)) {
         }
     };
 
-    this.writeString = (string: any) => {
+    this.writeString = (string: string) => {
         this.writeletInt(string.length);
-        if (offset + string.length >= buffer.length) Buffer.concat([buffer, new Buffer(string.length)]);
-        buffer.write(string, offset, string.length, "UTF-8");
+        if (offset + string.length >= buffer.length) Buffer.concat([buffer, Buffer.alloc(string.length)]);
+        buffer.write(string, offset, string.length, "utf-8");
         offset += string.length;
     };
 
-    this.writeUShort = (val: any) => {
+    this.writeUShort = (val: number) => {
         this.writeUByte(val >> 8);
         this.writeUByte(val & 0xFF);
     };
 
-    this.writeUByte = (val: any) => {
+    this.writeUByte = (val: number) => {
         if (offset >= buffer.length) {
-            buffer = Buffer.concat([buffer, new Buffer(50)]);
+            buffer = Buffer.concat([buffer, Buffer.alloc(50)]);
         }
 
         buffer.writeUInt8(val, offset++);
@@ -51,7 +51,7 @@ function CustomBuffer(existingBuffer: any = Buffer.alloc(48)) {
 
     this.readString = () => {
         let length = this.readletInt();
-        let str = buffer.toString("UTF-8", offset, offset + length);
+        let str = buffer.toString("utf-8", offset, offset + length);
         offset += length;
         return str;
     };

@@ -6,13 +6,21 @@
 import net from 'net'
 import createBuffer from './buffer.js';
 
-function ping(server: any, port: any, callback: any, timeout: any, protocol: any = '') {
-    let start: any = new Date();
+interface ServerStatus {
+    error: boolean;
+    ms: number;
+    version: string;
+    playersConnect: number;
+    playersMax: number;
+}
+
+function ping(server: string, port: number, callback: (err: Error | null, result: ServerStatus | null) => void, timeout: number, protocol: number | string = '') {
+    let start = Date.now();
     let socket = net.connect({
         port: port,
         host: server
     }, () => {
-        let handshakeBuffer = new createBuffer();
+        let handshakeBuffer = new (createBuffer as any)();
 
         handshakeBuffer.writeletInt(0);
         handshakeBuffer.writeletInt(protocol);
@@ -22,7 +30,7 @@ function ping(server: any, port: any, callback: any, timeout: any, protocol: any
 
         writePCBuffer(socket, handshakeBuffer);
 
-        let setModeBuffer = new createBuffer();
+        let setModeBuffer = new (createBuffer as any)();
 
         setModeBuffer.writeletInt(0);
 
@@ -39,8 +47,8 @@ function ping(server: any, port: any, callback: any, timeout: any, protocol: any
     socket.on('data', data => {
         readingBuffer = Buffer.concat([readingBuffer, data]);
 
-        let buffer = new createBuffer(readingBuffer);
-        let length: any;
+        let buffer = new (createBuffer as any)(readingBuffer);
+        let length: number;
 
         try {
             length = buffer.readletInt();
@@ -53,7 +61,7 @@ function ping(server: any, port: any, callback: any, timeout: any, protocol: any
         buffer.readletInt();
 
         try {
-            let end: any = new Date()
+            let end = Date.now()
             let json = JSON.parse(buffer.readString());
             callback(null, {
                 error: false,
@@ -75,8 +83,8 @@ function ping(server: any, port: any, callback: any, timeout: any, protocol: any
     });
 };
 
-function writePCBuffer(client: any, buffer: any) {
-    let length = new createBuffer();
+function writePCBuffer(client: net.Socket, buffer: { buffer: () => Buffer }) {
+    let length = new (createBuffer as any)();
     length.writeletInt(buffer.buffer().length);
     client.write(Buffer.concat([length.buffer(), buffer.buffer()]));
 }
@@ -89,11 +97,11 @@ export default class status {
         this.port = port
     }
 
-    async getStatus() {
+    async getStatus(): Promise<ServerStatus> {
         return await new Promise((resolve, reject) => {
-            ping(this.ip, this.port, (err: any, res: any) => {
+            ping(this.ip, this.port, (err: Error | null, res: ServerStatus | null) => {
                 if (err) return reject({ error: err });
-                return resolve(res);
+                return resolve(res!);
             }, 3000);
         })
     }

@@ -9,55 +9,21 @@ import { EventEmitter } from 'events';
 
 import { getPathLibraries } from '../../../utils/Index.js';
 import Downloader from '../../../utils/Downloader.js';
+import type { FabricLoaderData, FabricJSON } from '../../../types.js';
 
-/**
- * Represents the "loader" part of the user's options, containing version info for Minecraft and Fabric.
- */
-interface FabricLoaderConfig {
-	version: string;   // e.g., "1.19.2"
-	build: string;     // e.g., "latest", "recommended" or a specific build like "0.14.8"
-}
-
-/**
- * Overall options passed to FabricMC.  
- * Adjust or extend according to your project needs.
- */
 interface FabricOptions {
-	path: string;                  // Base path where libraries and files should be placed
-	loader: FabricLoaderConfig;    // Configuration for the Fabric loader
-	downloadFileMultiple?: number; // Number of concurrent downloads (if your Downloader supports it)
-	[key: string]: any;           // Allow extra fields as needed
+	path: string;
+	loader: {
+		version: string;
+		build: string;
+	};
+	downloadFileMultiple?: number;
 }
 
-/**
- * This object typically references the metadata and JSON URLs for the Fabric API,
- * for example:
- * {
- *   metaData: 'https://meta.fabricmc.net/v2/versions',
- *   json: 'https://meta.fabricmc.net/v2/versions/loader/${version}/${build}/profile/json'
- * }
- */
-interface LoaderObject {
-	metaData: string;  // URL to fetch general Fabric metadata
-	json: string;      // Template URL to fetch the final Fabric loader JSON
-}
-
-/**
- * Represents one library entry in the Fabric loader JSON.
- */
 interface FabricLibrary {
 	name: string;
 	url: string;
-	rules?: Array<any>;
-}
-
-/**
- * Represents the final JSON object fetched for the Fabric loader,
- * containing an array of libraries.
- */
-interface FabricJSON {
-	libraries: FabricLibrary[];
-	[key: string]: any; // Extend or adapt based on actual structure
+	rules?: Array<Record<string, unknown>>;
 }
 
 /**
@@ -80,28 +46,24 @@ export default class FabricMC extends EventEmitter {
 	 * @param Loader A LoaderObject with metaData and json URLs for Fabric.
 	 * @returns      A FabricJSON object on success, or an error object.
 	 */
-	public async downloadJson(Loader: LoaderObject): Promise<FabricJSON | { error: string }> {
+	public async downloadJson(Loader: FabricLoaderData): Promise<FabricJSON | { error: string }> {
 		let selectedBuild: { version: string } | undefined;
 
-		// Fetch overall metadata
 		const metaResponse = await fetch(Loader.metaData);
-		const metaData = await metaResponse.json();
+		const metaData: { game: Array<{ version: string }>; loader: Array<{ version: string }> } = await metaResponse.json();
 
-		// Check if the requested Minecraft version is supported
-		const versionExists = metaData.game.find((ver: any) => ver.version === this.options.loader.version);
+		const versionExists = metaData.game.find((ver) => ver.version === this.options.loader.version);
 		if (!versionExists) {
 			return { error: `FabricMC doesn't support Minecraft ${this.options.loader.version}` };
 		}
 
 		// Extract all possible loader builds
-		const availableBuilds = metaData.loader.map((b: any) => b.version);
+		const availableBuilds = metaData.loader.map((b) => b.version);
 
-		// If user wants the "latest" or "recommended" build, use the first in the array
 		if (this.options.loader.build === 'latest' || this.options.loader.build === 'recommended') {
 			selectedBuild = metaData.loader[0];
 		} else {
-			// Otherwise, search for a matching build
-			selectedBuild = metaData.loader.find((loaderBuild: any) => loaderBuild.version === this.options.loader.build);
+			selectedBuild = metaData.loader.find((loaderBuild) => loaderBuild.version === this.options.loader.build);
 		}
 
 		if (!selectedBuild) {
@@ -120,8 +82,8 @@ export default class FabricMC extends EventEmitter {
 			const response = await fetch(url);
 			const fabricJson: FabricJSON = await response.json();
 			return fabricJson;
-		} catch (err: any) {
-			return { error: err.message || 'Failed to fetch or parse Fabric loader JSON' };
+		} catch (err: unknown) {
+			return { error: err instanceof Error ? err.message : 'Failed to fetch or parse Fabric loader JSON' };
 		}
 	}
 

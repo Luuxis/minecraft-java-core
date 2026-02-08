@@ -4,12 +4,23 @@
  */
 
 import crypto from 'crypto';
+import type { MojangAuthResponse } from '../types.js';
 
 let api_url = 'https://authserver.mojang.com';
 
+interface MojangApiResponse {
+	accessToken?: string;
+	clientToken?: string;
+	selectedProfile?: {
+		id: string;
+		name: string;
+	};
+	error?: string;
+	errorMessage?: string;
+}
 
-async function login(username: string, password?: string) {
-	let UUID = crypto.randomBytes(16).toString('hex');
+async function login(username: string, password?: string): Promise<MojangAuthResponse> {
+	const UUID = crypto.randomBytes(16).toString('hex');
 	if (!password) {
 		return {
 			access_token: UUID,
@@ -21,10 +32,10 @@ async function login(username: string, password?: string) {
 				online: false,
 				type: 'Mojang'
 			}
-		}
+		};
 	}
 
-	let message = await fetch(`${api_url}/authenticate`, {
+	const message: MojangApiResponse = await fetch(`${api_url}/authenticate`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
@@ -42,24 +53,33 @@ async function login(username: string, password?: string) {
 	}).then(res => res.json());
 
 	if (message.error) {
-		return message;
-	};
-	let user = {
-		access_token: message.accessToken,
-		client_token: message.clientToken,
-		uuid: message.selectedProfile.id,
-		name: message.selectedProfile.name,
+		return {
+			access_token: '',
+			client_token: '',
+			uuid: '',
+			name: '',
+			user_properties: '{}',
+			meta: { online: false, type: 'Mojang' },
+			error: message.error,
+			errorMessage: message.errorMessage
+		};
+	}
+
+	return {
+		access_token: message.accessToken!,
+		client_token: message.clientToken!,
+		uuid: message.selectedProfile!.id,
+		name: message.selectedProfile!.name,
 		user_properties: '{}',
 		meta: {
 			online: true,
 			type: 'Mojang'
 		}
-	}
-	return user;
+	};
 }
 
-async function refresh(acc: any) {
-	let message = await fetch(`${api_url}/refresh`, {
+async function refresh(acc: MojangAuthResponse): Promise<MojangAuthResponse> {
+	const message: MojangApiResponse = await fetch(`${api_url}/refresh`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
@@ -72,25 +92,33 @@ async function refresh(acc: any) {
 	}).then(res => res.json());
 
 	if (message.error) {
-		return message;
-	};
+		return {
+			access_token: '',
+			client_token: '',
+			uuid: '',
+			name: '',
+			user_properties: '{}',
+			meta: { online: false, type: 'Mojang' },
+			error: message.error,
+			errorMessage: message.errorMessage
+		};
+	}
 
-	let user = {
-		access_token: message.accessToken,
-		client_token: message.clientToken,
-		uuid: message.selectedProfile.id,
-		name: message.selectedProfile.name,
+	return {
+		access_token: message.accessToken!,
+		client_token: message.clientToken!,
+		uuid: message.selectedProfile!.id,
+		name: message.selectedProfile!.name,
 		user_properties: '{}',
 		meta: {
 			online: true,
 			type: 'Mojang'
 		}
-	}
-	return user;
+	};
 }
 
-async function validate(acc: any) {
-	let message = await fetch(`${api_url}/validate`, {
+async function validate(acc: MojangAuthResponse): Promise<boolean> {
+	const message = await fetch(`${api_url}/validate`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
@@ -101,15 +129,11 @@ async function validate(acc: any) {
 		})
 	});
 
-	if (message.status == 204) {
-		return true;
-	} else {
-		return false;
-	}
+	return message.status === 204;
 }
 
-async function signout(acc: any) {
-	let message = await fetch(`${api_url}/invalidate`, {
+async function signout(acc: MojangAuthResponse): Promise<boolean> {
+	const message = await fetch(`${api_url}/invalidate`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
@@ -120,21 +144,17 @@ async function signout(acc: any) {
 		})
 	}).then(res => res.text());
 
-	if (message == "") {
-		return true;
-	} else {
-		return false;
-	}
+	return message === "";
 }
 
-function ChangeAuthApi(url: string) {
-	api_url = url
+function ChangeAuthApi(url: string): void {
+	api_url = url;
 }
 
 export {
-	login as login,
-	refresh as refresh,
-	validate as validate,
-	signout as signout,
-	ChangeAuthApi as ChangeAuthApi
-}
+	login,
+	refresh,
+	validate,
+	signout,
+	ChangeAuthApi
+};

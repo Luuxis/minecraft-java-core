@@ -8,37 +8,20 @@ import fs from 'fs';
 import path from 'path';
 import { EventEmitter } from 'events';
 import { getPathLibraries, getFileFromArchive } from '../utils/Index.js';
+import type {
+	PatcherProfile,
+	PatcherConfig,
+	PatcherProcessor,
+	MinecraftLibrary
+} from '../types.js';
+
+export type { PatcherProfile as Profile };
 
 interface ForgePatcherOptions {
 	path: string;
 	loader: {
 		type: string;
 	};
-}
-
-interface Config {
-	java: string;
-	minecraft: string;
-	minecraftJson: string;
-}
-
-interface ProfileData {
-	client: string;
-	[key: string]: any;
-}
-
-interface Processor {
-	jar: string;
-	args: string[];
-	classpath: string[];
-	sides?: string[];
-}
-
-export interface Profile {
-	data: Record<string, ProfileData>;
-	processors?: any[];
-	libraries?: Array<{ name?: string }>; // The universal jar/libraries reference
-	path?: string;
 }
 
 export default class ForgePatcher extends EventEmitter {
@@ -49,7 +32,7 @@ export default class ForgePatcher extends EventEmitter {
 		this.options = options;
 	}
 
-	public async patcher(profile: Profile, config: Config, neoForgeOld: boolean = true): Promise<void> {
+	public async patcher(profile: PatcherProfile, config: PatcherConfig, neoForgeOld: boolean = true): Promise<void> {
 		const { processors } = profile;
 
 		for (const [_, processor] of Object.entries(processors)) {
@@ -103,11 +86,11 @@ export default class ForgePatcher extends EventEmitter {
 		}
 	}
 
-	public check(profile: Profile): boolean {
+	public check(profile: PatcherProfile): boolean {
 		const { processors } = profile;
 		let files: string[] = [];
 
-		for (const processor of Object.values(processors)) {
+		for (const processor of Object.values(processors!)) {
 			if (processor.sides && !processor.sides.includes('client')) continue;
 
 			processor.args.forEach(arg => {
@@ -129,10 +112,10 @@ export default class ForgePatcher extends EventEmitter {
 		return true;
 	}
 
-	private setArgument(arg: string, profile: Profile, config: Config, neoForgeOld: boolean): string {
+	private setArgument(arg: string, profile: PatcherProfile, config: PatcherConfig, neoForgeOld: boolean): string {
 		const finalArg = arg.replace('{', '').replace('}', '');
 
-		const universalLib = profile.libraries.find(lib => {
+		const universalLib = profile.libraries?.find(lib => {
 			if (this.options.loader.type === 'forge') return lib.name.startsWith('net.minecraftforge:forge');
 			else return lib.name.startsWith(neoForgeOld ? 'net.neoforged:forge' : 'net.neoforged:neoforge');
 		});
