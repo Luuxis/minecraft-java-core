@@ -224,14 +224,16 @@ function skipLibrary(lib: MinecraftLibrary): boolean {
 }
 
 function fromAnyReadable(webStream: ReadableStream<Uint8Array>): import('node:stream').Readable {
-	let NodeReadableStreamCtor: typeof ReadableStream | undefined;
-	if (!NodeReadableStreamCtor && typeof globalThis?.navigator === 'undefined') {
-		import('node:stream/web').then((mod) => { NodeReadableStreamCtor = mod.ReadableStream as typeof ReadableStream; });
-	}
-	if (NodeReadableStreamCtor && webStream instanceof NodeReadableStreamCtor && typeof (Readable as unknown as { fromWeb: Function }).fromWeb === 'function') {
-		return (Readable as unknown as { fromWeb: (stream: ReadableStream) => Readable }).fromWeb(webStream);
+	// Try Readable.fromWeb() first (Node.js 18+), works for both Node.js and Electron
+	if (typeof (Readable as unknown as { fromWeb: Function }).fromWeb === 'function') {
+		try {
+			return (Readable as unknown as { fromWeb: (stream: ReadableStream) => Readable }).fromWeb(webStream);
+		} catch {
+			// If fromWeb fails (e.g. wrong stream type in Electron), fall through to manual pump
+		}
 	}
 
+	// Manual pump fallback for environments where Readable.fromWeb() is unavailable or fails
 	const nodeStream = new Readable({ read() { } });
 	const reader = webStream.getReader();
 

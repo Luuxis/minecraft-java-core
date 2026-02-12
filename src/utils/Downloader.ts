@@ -28,7 +28,8 @@ export default class Downloader extends EventEmitter {
 			fs.mkdirSync(dirPath, { recursive: true });
 		}
 
-		const writer = fs.createWriteStream(`${dirPath}/${fileName}`);
+		const filePath = `${dirPath}/${fileName}`;
+		const writer = fs.createWriteStream(filePath);
 		const response = await fetch(url);
 
 		const contentLength = response.headers.get('content-length');
@@ -47,12 +48,14 @@ export default class Downloader extends EventEmitter {
 			});
 
 			body.on('end', () => {
-				writer.end();
-				resolve();
+				// Wait for writer to fully flush to disk before resolving
+				writer.end(() => resolve());
 			});
 
 			body.on('error', (err: Error) => {
 				writer.destroy();
+				// Clean up partial file on error (important on Windows where locked files cause issues)
+				try { fs.unlinkSync(filePath); } catch { /* ignore */ }
 				this.emit('error', err);
 				reject(err);
 			});
@@ -127,13 +130,17 @@ export default class Downloader extends EventEmitter {
 				});
 
 				stream.on('end', () => {
-					writer.end();
-					completed++;
-					downloadNext();
+					// Wait for writer to fully flush to disk before marking complete
+					writer.end(() => {
+						completed++;
+						downloadNext();
+					});
 				});
 
 				stream.on('error', (err) => {
 					writer.destroy();
+					// Clean up partial file on error (avoids EBUSY/EPERM on Windows)
+					try { fs.unlinkSync(file.path); } catch { /* ignore */ }
 					this.emit('error', err);
 					completed++;
 					downloadNext();
@@ -141,6 +148,8 @@ export default class Downloader extends EventEmitter {
 			} catch (e) {
 				clearTimeout(timeoutId);
 				writer.destroy();
+				// Clean up partial file on error (avoids EBUSY/EPERM on Windows)
+				try { fs.unlinkSync(file.path); } catch { /* ignore */ }
 				this.emit('error', e);
 				completed++;
 				downloadNext();
