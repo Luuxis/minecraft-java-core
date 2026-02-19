@@ -1,6 +1,6 @@
 {
     "name": "minecraft-java-core",
-    "version": "4.2.5",
+    "version": "4.2.6",
     "types": "./build/Index.d.ts",
     "exports": {
         ".": {
