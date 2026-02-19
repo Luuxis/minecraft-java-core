@@ -11,6 +11,18 @@ import type { DownloadFile } from '../types.js';
 export type { DownloadFile as DownloadOptions };
 
 /**
+ * Files smaller than this threshold are downloaded as a single buffer
+ * instead of streaming, avoiding stream/event overhead for tiny files.
+ */
+const SMALL_FILE_THRESHOLD = 1 * 1024 * 1024; // 1 MB
+
+/**
+ * Minimum interval (ms) between progress event emissions.
+ * Prevents flooding the event loop when downloading thousands of files.
+ */
+const PROGRESS_THROTTLE_MS = 50;
+
+/**
  * A class responsible for downloading single or multiple files,
  * emitting events for progress, speed, estimated time, and errors.
  */
@@ -42,19 +54,16 @@ export default class Downloader extends EventEmitter {
 
 			body.on('data', (chunk: Buffer) => {
 				downloaded += chunk.length;
-				// Emit progress with the current number of bytes vs. total size
 				this.emit('progress', downloaded, totalSize);
 				writer.write(chunk);
 			});
 
 			body.on('end', () => {
-				// Wait for writer to fully flush to disk before resolving
 				writer.end(() => resolve());
 			});
 
 			body.on('error', (err: Error) => {
 				writer.destroy();
-				// Clean up partial file on error (important on Windows where locked files cause issues)
 				try { fs.unlinkSync(filePath); } catch { /* ignore */ }
 				this.emit('error', err);
 				reject(err);
@@ -63,14 +72,17 @@ export default class Downloader extends EventEmitter {
 	}
 
 	/**
-	 * Downloads multiple files concurrently (up to the specified limit).
-	 * Emits "progress" events with cumulative bytes downloaded vs. total size,
-	 * as well as "speed" and "estimated" events for speed and ETA calculations.
+	 * Downloads multiple files concurrently using a worker-pool pattern.
+	 * Small files (< 1 MB) are fetched as a single buffer and written at once,
+	 * avoiding per-file stream/event overhead. Large files are streamed to disk.
 	 *
-	 * @param files - An array of DownloadOptions describing each file
-	 * @param size - The total size (in bytes) of all files to be downloaded
-	 * @param limit - The maximum number of simultaneous downloads
-	 * @param timeout - A timeout in milliseconds for each fetch request
+	 * Progress events are throttled to avoid flooding the event loop.
+	 * Directories are pre-created in a single pass before downloading begins.
+	 *
+	 * @param files   - Array of DownloadFile describing each file
+	 * @param size    - Total size (bytes) of all files to download
+	 * @param limit   - Maximum number of simultaneous downloads
+	 * @param timeout - Timeout in ms for each fetch request
 	 */
 	public async downloadFileMultiple(
 		files: DownloadFile[],
@@ -78,99 +90,108 @@ export default class Downloader extends EventEmitter {
 		limit: number = 1,
 		timeout: number = 10000
 	): Promise<void> {
+		if (files.length === 0) return;
 		if (limit > files.length) limit = files.length;
 
-		let completed = 0;     // Number of downloads completed
-		let downloaded = 0;    // Cumulative bytes downloaded
-		let queued = 0;        // Index of the next file to download
+		let downloaded = 0;
+		let queued = 0;
 
-		let start = Date.now();
-		let before = 0;
+		// ── Pre-create all unique directories in one pass ──────────────
+		const dirs = new Set<string>();
+		for (const f of files) {
+			if (f.folder) dirs.add(f.folder);
+		}
+		for (const dir of dirs) {
+			if (!fs.existsSync(dir)) {
+				fs.mkdirSync(dir, { recursive: true, mode: 0o777 });
+			}
+		}
+
+		// ── Speed & ETA tracking ──────────────────────────────────────
+		let speedStart = Date.now();
+		let speedBefore = 0;
 		const speeds: number[] = [];
 
-		const estimated = setInterval(() => {
-			const duration = (Date.now() - start) / 1000;
-			const chunkDownloaded = downloaded - before;
+		const speedInterval = setInterval(() => {
+			const elapsed = (Date.now() - speedStart) / 1000;
+			const chunk = downloaded - speedBefore;
 			if (speeds.length >= 5) speeds.shift();
-			speeds.push(chunkDownloaded / duration);
+			speeds.push(chunk / elapsed);
 
-			const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-			this.emit('speed', avgSpeed);
+			const avg = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+			this.emit('speed', avg);
+			this.emit('estimated', (size - downloaded) / avg);
 
-			const timeRemaining = (size - downloaded) / avgSpeed;
-			this.emit('estimated', timeRemaining);
-
-			start = Date.now();
-			before = downloaded;
+			speedStart = Date.now();
+			speedBefore = downloaded;
 		}, 500);
 
-		const downloadNext = async (): Promise<void> => {
-			if (queued >= files.length) return;
-
-			const file = files[queued++];
-			if (!fs.existsSync(file.folder)) {
-				fs.mkdirSync(file.folder, { recursive: true, mode: 0o777 });
-			}
-
-			const writer = fs.createWriteStream(file.path, { flags: 'w', mode: 0o777 });
-			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-			try {
-				const response = await fetch(file.url, { signal: controller.signal });
-
-				clearTimeout(timeoutId);
-
-				const stream = fromAnyReadable(response.body as ReadableStream<Uint8Array>);
-
-				stream.on('data', (chunk: Buffer) => {
-					downloaded += chunk.length;
-					this.emit('progress', downloaded, size, file.type);
-					writer.write(chunk);
-				});
-
-				stream.on('end', () => {
-					// Wait for writer to fully flush to disk before marking complete
-					writer.end(() => {
-						completed++;
-						downloadNext();
-					});
-				});
-
-				stream.on('error', (err) => {
-					writer.destroy();
-					// Clean up partial file on error (avoids EBUSY/EPERM on Windows)
-					try { fs.unlinkSync(file.path); } catch { /* ignore */ }
-					this.emit('error', err);
-					completed++;
-					downloadNext();
-				});
-			} catch (e) {
-				clearTimeout(timeoutId);
-				writer.destroy();
-				// Clean up partial file on error (avoids EBUSY/EPERM on Windows)
-				try { fs.unlinkSync(file.path); } catch { /* ignore */ }
-				this.emit('error', e);
-				completed++;
-				downloadNext();
+		// ── Throttled progress emission ───────────────────────────────
+		let lastEmit = 0;
+		const emitProgress = (type?: string, force = false) => {
+			const now = Date.now();
+			if (force || now - lastEmit >= PROGRESS_THROTTLE_MS) {
+				lastEmit = now;
+				this.emit('progress', downloaded, size, type);
 			}
 		};
 
-		// Start "limit" concurrent downloads
-		for (let i = 0; i < limit; i++) {
-			downloadNext();
-		}
+		// ── Worker: loops picking files from queue until exhausted ────
+		const worker = async (): Promise<void> => {
+			while (queued < files.length) {
+				const file = files[queued++];
 
-		// Wait until all downloads complete
-		return new Promise((resolve) => {
-			const interval = setInterval(() => {
-				if (completed === files.length) {
-					clearInterval(estimated);
-					clearInterval(interval);
-					resolve();
+				const controller = new AbortController();
+				const tid = setTimeout(() => controller.abort(), timeout);
+
+				try {
+					const response = await fetch(file.url!, { signal: controller.signal });
+					clearTimeout(tid);
+
+					if (!file.size || file.size < SMALL_FILE_THRESHOLD) {
+						// ── Small file: single buffer write (no stream overhead) ──
+						const buffer = Buffer.from(await response.arrayBuffer());
+						fs.writeFileSync(file.path, buffer, { mode: 0o777 });
+						downloaded += buffer.length;
+						emitProgress(file.type);
+					} else {
+						// ── Large file: stream to disk ────────────────────────────
+						await new Promise<void>((resolve, reject) => {
+							const writer = fs.createWriteStream(file.path, { flags: 'w', mode: 0o777 });
+							const stream = fromAnyReadable(response.body as ReadableStream<Uint8Array>);
+
+							stream.on('data', (chunk: Buffer) => {
+								downloaded += chunk.length;
+								emitProgress(file.type);
+								writer.write(chunk);
+							});
+
+							stream.on('end', () => writer.end(() => resolve()));
+
+							stream.on('error', (err) => {
+								writer.destroy();
+								try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+								reject(err);
+							});
+						});
+					}
+				} catch (e) {
+					clearTimeout(tid);
+					try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+					this.emit('error', e);
 				}
-			}, 100);
-		});
+			}
+		};
+
+		// ── Launch worker pool & wait for all to finish ───────────────
+		const workers: Promise<void>[] = [];
+		for (let i = 0; i < limit; i++) {
+			workers.push(worker());
+		}
+		await Promise.all(workers);
+
+		clearInterval(speedInterval);
+		emitProgress(undefined, true); // final progress update
 	}
 
 	/**

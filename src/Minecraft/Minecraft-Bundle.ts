@@ -5,18 +5,23 @@
 
 import fs from 'fs';
 import path from 'path';
+import { EventEmitter } from 'events';
 import { getFileHash } from '../utils/Index.js';
 import type { BundleItem, LaunchOptions } from '../types.js';
 
 export type { BundleItem };
 
+/** Number of files to hash in parallel during bundle checking */
+const CHECK_CONCURRENCY = 64;
+
 /**
  * This class manages checking, downloading, and cleaning up Minecraft files.
  */
-export default class MinecraftBundle {
+export default class MinecraftBundle extends EventEmitter {
 	private options: LaunchOptions;
 
 	constructor(options: LaunchOptions) {
+		super();
 		this.options = options;
 	}
 
@@ -24,20 +29,32 @@ export default class MinecraftBundle {
 	 * Checks each item in the provided bundle to see if it needs to be
 	 * downloaded or updated (e.g., if hashes don't match).
 	 *
+	 * Phase 1 (sync, fast): resolve paths, write CFILE files, quick existence
+	 * and size checks to immediately classify files as "missing" or "need hash".
+	 *
+	 * Phase 2 (parallel): hash files that passed the size check in batches
+	 * of CHECK_CONCURRENCY to saturate disk I/O without exhausting memory.
+	 *
 	 * @param bundle Array of file items describing what needs to be on disk.
 	 * @returns Array of BundleItem objects that require downloading.
 	 */
 	public async checkBundle(bundle: BundleItem[]): Promise<BundleItem[]> {
 		const toDownload: BundleItem[] = [];
+		const toHash: BundleItem[] = [];          // files that exist & need hash verification
 
+		let replaceName = `${this.options.path}/`;
+		if (this.options.instance) {
+			replaceName = `${this.options.path}/instances/${this.options.instance}/`;
+		}
+		const ignoredSet = new Set(this.options.ignored);
+
+		// ── Phase 1: synchronous fast-pass ─────────────────────────────
 		for (const file of bundle) {
 			if (!file.path) continue;
 
-			// Convert path to absolute, consistent format
 			file.path = path.resolve(this.options.path, file.path).replace(/\\/g, '/');
 			file.folder = file.path.split('/').slice(0, -1).join('/');
 
-			// If it's a direct content file (CFILE), we create/write the content immediately
 			if (file.type === 'CFILE') {
 				if (!fs.existsSync(file.folder)) {
 					fs.mkdirSync(file.folder, { recursive: true, mode: 0o777 });
@@ -46,31 +63,56 @@ export default class MinecraftBundle {
 				continue;
 			}
 
-			// If the file is supposed to have a certain hash, check it.
-			if (fs.existsSync(file.path)) {
-				// Build the instance path prefix for ignoring checks
-				let replaceName = `${this.options.path}/`;
-				if (this.options.instance) {
-					replaceName = `${this.options.path}/instances/${this.options.instance}/`;
-				}
+			let stat: fs.Stats | null = null;
+			try { stat = fs.statSync(file.path); } catch { /* does not exist */ }
 
-				// If file is in "ignored" list, skip checks
-				const relativePath = file.path.replace(replaceName, '');
-				if (this.options.ignored.includes(relativePath)) {
-					continue;
-				}
+			if (!stat) {
+				toDownload.push(file);
+				continue;
+			}
 
-				// If the file has a hash and doesn't match, mark it for download
-				if (file.sha1) {
-					const localHash = await getFileHash(file.path);
-					if (localHash !== file.sha1) {
+			// Skip ignored files
+			const relativePath = file.path.replace(replaceName, '');
+			if (ignoredSet.has(relativePath)) continue;
+
+			if (file.sha1) {
+				// Quick size check: if size is known and doesn't match → skip hash, redownload
+				if (file.size && stat.size !== file.size) {
+					toDownload.push(file);
+				} else {
+					toHash.push(file);
+				}
+			}
+		}
+
+		// ── Phase 2: parallel hash verification ────────────────────────
+		if (toHash.length > 0) {
+			let checked = 0;
+			const total = toHash.length;
+			let idx = 0;
+
+			const worker = async () => {
+				while (idx < total) {
+					const file = toHash[idx++];
+					try {
+						const localHash = await getFileHash(file.path);
+						if (localHash !== file.sha1) {
+							toDownload.push(file);
+						}
+					} catch {
 						toDownload.push(file);
 					}
+					checked++;
+					this.emit('check', checked, total, 'Checking files');
 				}
-			} else {
-				// The file doesn't exist at all, mark it for download
-				toDownload.push(file);
+			};
+
+			const workers: Promise<void>[] = [];
+			const concurrency = Math.min(CHECK_CONCURRENCY, toHash.length);
+			for (let i = 0; i < concurrency; i++) {
+				workers.push(worker());
 			}
+			await Promise.all(workers);
 		}
 
 		return toDownload;

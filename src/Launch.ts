@@ -152,6 +152,10 @@ export default class Launch extends EventEmitter {
 		const bundle = new bundleMinecraft(this.options)
 		const java = new javaMinecraft(this.options)
 
+		bundle.on('check', (progress: number, size: number, element: string) => {
+			this.emit('check', progress, size, element);
+		});
+
 		java.on('progress', (progress: number, size: number, element: string) => {
 			this.emit('progress', progress, size, element)
 		});

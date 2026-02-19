@@ -60,16 +60,20 @@ function getPathLibraries(main: string, nativeString?: string, forceExt?: string
  */
 async function getFileHash(filePath: string, algorithm: string = 'sha1'): Promise<string> {
 	const shasum = crypto.createHash(algorithm);
+
+	// For small files, avoid the stream overhead entirely
+	const stat = fs.statSync(filePath);
+	if (stat.size <= 512 * 1024) { // ≤ 512 KB
+		shasum.update(fs.readFileSync(filePath));
+		return shasum.digest('hex');
+	}
+
+	// For larger files, stream to avoid loading everything into memory
 	const fileStream = fs.createReadStream(filePath);
-
-	return new Promise((resolve) => {
-		fileStream.on('data', (data) => {
-			shasum.update(data);
-		});
-
-		fileStream.on('end', () => {
-			resolve(shasum.digest('hex'));
-		});
+	return new Promise((resolve, reject) => {
+		fileStream.on('data', (data) => shasum.update(data));
+		fileStream.on('end', () => resolve(shasum.digest('hex')));
+		fileStream.on('error', reject);
 	});
 }
 
