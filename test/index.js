@@ -5,6 +5,7 @@ const fs = require('fs');
 const ACCOUNT_FILE = './account.json';
 const INSTANCE_NAME = 'dev';
 const API_URL = 'http://luuxcraft.fr/api/user/bb8f5247-1d38-41bb-ab6d-3200471a06b2/instances';
+const DOWNLOAD_SIMULTANEOUS = 5;
 const MINECRAFT_PATH = './minecraft';
 const MEMORY_CONFIG = { min: '14G', max: '16G' };
 
@@ -66,6 +67,7 @@ function buildLaunchOptions(instanceData, account) {
         instance: instanceData.name,
         ignore_log4j: true,
         ignored: instanceData.ignored,
+        downloadFileMultiple: DOWNLOAD_SIMULTANEOUS,
         loader: {
             type: loaderType,
             build: instanceData.loader?.loader_version || instanceData.loadder.loadder_version,
@@ -79,7 +81,7 @@ function buildLaunchOptions(instanceData, account) {
 function setupLauncherListeners(launcher) {
     launcher.on('progress', (progress, size) => {
         const percentage = ((progress / size) * 100).toFixed(2);
-        console.log(`[DL] ${percentage}%`);
+        console.log(`[DL] ${percentage} %`);
     });
 
     launcher.on('patch', patch => process.stdout.write(patch));
