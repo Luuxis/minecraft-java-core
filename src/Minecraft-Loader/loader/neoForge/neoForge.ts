@@ -63,106 +63,60 @@ export default class NeoForgeMC extends EventEmitter {
 	}
 
 	/**
-	 * Detects the type of Minecraft version from the version string.
-	 * Returns information about whether it's a release, snapshot, pre-release, or release candidate.
-	 * 
-	 * Supported formats:
-	 * - Release: "1.20.4", "1.21.3"
-	 * - Weekly snapshot: "25w14a", "24w46a" (YYwXXa format)
-	 * - Special snapshot: "25w14craftmine" (April Fools or special editions)
-	 * - Pre-release: "1.21.5-pre1", "1.20.6-pre2"
-	 * - Release candidate: "1.21.5-rc1", "1.20.6-rc2"
-	 * - New snapshot format: "26.1-snapshot-1", "26.1-snapshot-2"
-	 * 
-	 * @param version The Minecraft version string
-	 * @returns An object with version type info and normalized version for NeoForge lookup
+	 * Converts a NeoForge version string to its corresponding Minecraft version.
+	 * Handles all NeoForge versioning formats:
+	 *
+	 * - Snapshot special: "0.25w14craftmine.3-beta" → "25w14craftmine"
+	 * - 4-parts + suffix: "26.1.0.0-alpha.1+snapshot-1" → "26.1-snapshot-1"
+	 * - 4-parts + suffix: "26.1.0.0-alpha.15+pre-3" → "26.1-pre-3"
+	 * - 4-parts no suffix: "26.1.0.1-beta" → "26.1"
+	 * - 3-parts classic: "21.4.121" → "1.21.4"
+	 * - 3-parts minor=0: "21.0.143" → "1.21"
+	 *
+	 * @param version The NeoForge version string
+	 * @returns The corresponding Minecraft version, or null if unrecognized
 	 */
-	private detectVersionType(version: string): { 
-		isRelease: boolean; 
-		isWeeklySnapshot: boolean; 
-		isPreRelease: boolean; 
-		isReleaseCandidate: boolean;
-		isNewSnapshot: boolean;
-		baseVersion: string | null;
-		snapshotId: string | null;
-	} {
-		// New snapshot format: "26.1-snapshot-1"
-		const newSnapshotMatch = version.match(/^(\d+\.\d+)-snapshot-(\d+)$/);
-		if (newSnapshotMatch) {
-			return {
-				isRelease: false,
-				isWeeklySnapshot: false,
-				isPreRelease: false,
-				isReleaseCandidate: false,
-				isNewSnapshot: true,
-				baseVersion: newSnapshotMatch[1],
-				snapshotId: version
-			};
+	private neoforgeVersionToMinecraft(version: string): string | null {
+		// 1. Snapshot special: starts with "0." → e.g., "0.25w14craftmine.3-beta"
+		const snapshotMatch = version.match(/^0\.([^.]+)\./);
+		if (snapshotMatch) {
+			return snapshotMatch[1];
 		}
 
-		// Weekly snapshot format: "25w14a", "24w46a", "25w14craftmine" (supports single letter or word suffix)
-		const weeklySnapshotMatch = version.match(/^(\d{2})w(\d{2})([a-z]+)$/);
-		if (weeklySnapshotMatch) {
-			return {
-				isRelease: false,
-				isWeeklySnapshot: true,
-				isPreRelease: false,
-				isReleaseCandidate: false,
-				isNewSnapshot: false,
-				baseVersion: null,
-				snapshotId: version
-			};
+		// 2. Strip suffix (everything after first "-" or "+") and split numeric part
+		const numericPart = version.split(/[-+]/)[0];
+		const parts = numericPart.split('.');
+
+		// 3. 4+ parts → 2026+ format (e.g., "26.1.0.1" → MC "26.1")
+		if (parts.length >= 4) {
+			let mc = `${parts[0]}.${parts[1]}`;
+			// Check for "+snapshot-N" or "+pre-N" suffix
+			const suffixMatch = version.match(/\+(snapshot-\d+|pre-\d+)/);
+			if (suffixMatch) {
+				mc += `-${suffixMatch[1]}`;
+			}
+			return mc;
 		}
 
-		// Pre-release format: "1.21.5-pre1"
-		const preReleaseMatch = version.match(/^(\d+\.\d+(?:\.\d+)?)-pre(\d+)$/);
-		if (preReleaseMatch) {
-			return {
-				isRelease: false,
-				isWeeklySnapshot: false,
-				isPreRelease: true,
-				isReleaseCandidate: false,
-				isNewSnapshot: false,
-				baseVersion: preReleaseMatch[1],
-				snapshotId: version
-			};
+		// 4. 3 parts → classic format (e.g., "21.4.121" → MC "1.21.4")
+		if (parts.length === 3) {
+			if (parts[1] === '0') {
+				return `1.${parts[0]}`;
+			}
+			return `1.${parts[0]}.${parts[1]}`;
 		}
 
-		// Release candidate format: "1.21.5-rc1"
-		const rcMatch = version.match(/^(\d+\.\d+(?:\.\d+)?)-rc(\d+)$/);
-		if (rcMatch) {
-			return {
-				isRelease: false,
-				isWeeklySnapshot: false,
-				isPreRelease: false,
-				isReleaseCandidate: true,
-				isNewSnapshot: false,
-				baseVersion: rcMatch[1],
-				snapshotId: version
-			};
-		}
-
-		// Standard release format: "1.20.4", "1.21.3"
-		return {
-			isRelease: true,
-			isWeeklySnapshot: false,
-			isPreRelease: false,
-			isReleaseCandidate: false,
-			isNewSnapshot: false,
-			baseVersion: version,
-			snapshotId: null
-		};
+		return null;
 	}
 
 	/**
 	 * Downloads the NeoForge installer jar for the specified version and build,
 	 * either using a legacy API or the newer metaData approach. If "latest" or "recommended"
 	 * is specified, it picks the newest build from the filtered list.
-	 * 
-	 * Supports both release versions and snapshot versions:
-	 * - Release versions use the standard "XX.Y.Z" format (e.g., "21.3.50" for MC 1.21.3)
-	 * - Weekly snapshots use "0.YYwXXa.N-beta" format (e.g., "0.25w14craftmine.3-beta")
-	 * - Pre-releases/RC may use special versioning when supported by NeoForge
+	 *
+	 * Uses neoforgeVersionToMinecraft() to map each NeoForge version to its
+	 * Minecraft version, supporting all formats (releases, snapshots, pre-releases,
+	 * 4-part 2026+ versions, etc.).
 	 *
 	 * @param Loader An object containing URLs and patterns for legacy and new metadata/installers.
 	 * @returns      An object with filePath and oldAPI fields, or an error.
@@ -172,83 +126,29 @@ export default class NeoForgeMC extends EventEmitter {
 		let neoForgeURL: string;
 		let oldAPI = true;
 
-		// Detect the version type (release, snapshot, pre-release, etc.)
-		const versionInfo = this.detectVersionType(this.options.loader.version);
+		const minecraftVersion = this.options.loader.version;
 
 		// Fetch versions from both APIs
 		const legacyMetaData = await fetch(Loader.legacyMetaData).then(res => res.json());
 		const metaData = await fetch(Loader.metaData).then(res => res.json());
 
-		let versions: string[] = [];
+		// Try legacy API first (old Forge-era versions like "1.20.1-47.1.0")
+		let versions: string[] = legacyMetaData.versions.filter((v: string) =>
+			v.includes(`${minecraftVersion}-`)
+		);
 
-		// Handle weekly snapshots (e.g., "25w14a")
-		if (versionInfo.isWeeklySnapshot) {
-			// Weekly snapshots use a special format like "0.25w14craftmine.3-beta"
-			// We need to find versions that contain the snapshot identifier
-			const snapshotId = this.options.loader.version.toLowerCase();
-			versions = metaData.versions.filter((v: string) => 
-				v.toLowerCase().includes(snapshotId) || 
-				v.toLowerCase().startsWith(`0.${snapshotId}`)
-			);
+		// If none found in legacy, use modern API with neoforgeVersionToMinecraft
+		if (!versions.length) {
+			versions = metaData.versions.filter((v: string) => {
+				const mc = this.neoforgeVersionToMinecraft(v);
+				return mc === minecraftVersion;
+			});
 			oldAPI = false;
-		}
-		// Handle new snapshot format (e.g., "26.1-snapshot-1")
-		else if (versionInfo.isNewSnapshot && versionInfo.baseVersion) {
-			// New snapshots might have special NeoForge versions
-			// Try to find versions matching the base version pattern
-			const baseVersionParts = versionInfo.baseVersion.split('.');
-			const shortVersion = `${baseVersionParts[0]}.${baseVersionParts[1] || 0}.`;
-			versions = metaData.versions.filter((v: string) => 
-				v.startsWith(shortVersion) || v.includes('snapshot')
-			);
-			oldAPI = false;
-		}
-		// Handle pre-releases (e.g., "1.21.5-pre1")
-		else if (versionInfo.isPreRelease && versionInfo.baseVersion) {
-			// Pre-releases might use the base version's NeoForge builds
-			// First try to find specific pre-release builds
-			const splitted = versionInfo.baseVersion.split('.');
-			const shortVersion = `${splitted[1]}.${splitted[2] || 0}.`;
-			versions = metaData.versions.filter((v: string) => v.startsWith(shortVersion));
-			oldAPI = false;
-			
-			// If no versions found, this pre-release may not be supported yet
-			if (!versions.length) {
-				return { error: `NeoForge doesn't support Minecraft ${this.options.loader.version} yet (pre-release)` };
-			}
-		}
-		// Handle release candidates (e.g., "1.21.5-rc1")
-		else if (versionInfo.isReleaseCandidate && versionInfo.baseVersion) {
-			// Release candidates might use the base version's NeoForge builds
-			const splitted = versionInfo.baseVersion.split('.');
-			const shortVersion = `${splitted[1]}.${splitted[2] || 0}.`;
-			versions = metaData.versions.filter((v: string) => v.startsWith(shortVersion));
-			oldAPI = false;
-			
-			// If no versions found, this RC may not be supported yet
-			if (!versions.length) {
-				return { error: `NeoForge doesn't support Minecraft ${this.options.loader.version} yet (release candidate)` };
-			}
-		}
-		// Handle standard releases (e.g., "1.20.4", "1.21.3")
-		else {
-			// Filter versions for the specified Minecraft version using legacy API first
-			versions = legacyMetaData.versions.filter((v: string) =>
-				v.includes(`${this.options.loader.version}-`)
-			);
-
-			// If none found in legacy, fallback to the new API approach
-			if (!versions.length) {
-				const splitted = this.options.loader.version.split('.');
-				const shortVersion = `${splitted[1]}.${splitted[2] || 0}.`;
-				versions = metaData.versions.filter((v: string) => v.startsWith(shortVersion));
-				oldAPI = false;
-			}
 		}
 
 		// If still no versions found, return an error
 		if (!versions.length) {
-			return { error: `NeoForge doesn't support Minecraft ${this.options.loader.version}` };
+			return { error: `NeoForge doesn't support Minecraft ${minecraftVersion}` };
 		}
 
 		// Determine which build to use
