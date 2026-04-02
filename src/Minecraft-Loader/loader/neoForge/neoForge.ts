@@ -69,7 +69,8 @@ export default class NeoForgeMC extends EventEmitter {
 	 * - Snapshot special: "0.25w14craftmine.3-beta" → "25w14craftmine"
 	 * - 4-parts + suffix: "26.1.0.0-alpha.1+snapshot-1" → "26.1-snapshot-1"
 	 * - 4-parts + suffix: "26.1.0.0-alpha.15+pre-3" → "26.1-pre-3"
-	 * - 4-parts no suffix: "26.1.0.1-beta" → "26.1"
+	 * - 4-parts patch 0: "26.1.0.1-beta" → "26.1"
+	 * - 4-parts patch >0: "26.1.1.0-beta" → "26.1.1"
 	 * - 3-parts classic: "21.4.121" → "1.21.4"
 	 * - 3-parts minor=0: "21.0.143" → "1.21"
 	 *
@@ -87,22 +88,21 @@ export default class NeoForgeMC extends EventEmitter {
 		const numericPart = version.split(/[-+]/)[0];
 		const parts = numericPart.split('.');
 
-		// 3. 4+ parts → 2026+ format (e.g., "26.1.0.1" → MC "26.1")
+		// 3. 4+ parts → 2026+ format (e.g., "26.1.0.1" → MC "26.1", or "26.1.1.0" → MC "26.1.1")
 		if (parts.length >= 4) {
+			// parts[0] = major, parts[1] = minor, parts[2] = patch, parts[3] = build
 			let mc = `${parts[0]}.${parts[1]}`;
+			// Include patch version if it's non-zero (like Minecraft versions)
+			if (parts[2] !== '0') mc += `.${parts[2]}`;
 			// Check for "+snapshot-N" or "+pre-N" suffix
 			const suffixMatch = version.match(/\+(snapshot-\d+|pre-\d+)/);
-			if (suffixMatch) {
-				mc += `-${suffixMatch[1]}`;
-			}
+			if (suffixMatch) mc += `-${suffixMatch[1]}`;
 			return mc;
 		}
 
 		// 4. 3 parts → classic format (e.g., "21.4.121" → MC "1.21.4")
 		if (parts.length === 3) {
-			if (parts[1] === '0') {
-				return `1.${parts[0]}`;
-			}
+			if (parts[1] === '0') return `1.${parts[0]}`;
 			return `1.${parts[0]}.${parts[1]}`;
 		}
 
