@@ -1,10 +1,9 @@
 const { Launch, Microsoft } = require('minecraft-java-core');
 const fs = require('fs');
 
-
 const ACCOUNT_FILE = './account.json';
-const API_URL = 'http://luuxcraft.fr/api/user/bb8f5247-1d38-41bb-ab6d-3200471a06b2/instances';
-const INSTANCE_NAME = 'dev';
+const API_URL = 'http://luuxcraft.fr/api/user/d7439d52-b6b9-4e9e-a920-2932e8afb2ee/instances';
+const INSTANCE_NAME = 'BestiMon';
 const DOWNLOAD_SIMULTANEOUS = 30;
 const MINECRAFT_PATH = './minecraft';
 const MEMORY_CONFIG = { min: '14G', max: '16G' };
@@ -74,7 +73,11 @@ function buildLaunchOptions(instanceData, account) {
             enable: loaderType !== 'none',
             path: './'
         },
-        memory: MEMORY_CONFIG
+        JVM_ARGS: [],
+        memory: MEMORY_CONFIG,
+        java: {
+            // version: 8
+        }
     };
 }
 

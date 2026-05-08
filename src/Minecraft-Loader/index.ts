@@ -10,8 +10,7 @@ import { loader as loaderFunction } from '../utils/Index.js';
 import type {
 	LoaderType,
 	LoaderResult,
-	LoaderDownloaderOptions,
-	LoaderDownloaderConfig
+	LoaderDownloaderOptions
 } from '../types.js';
 
 // Loader sub-classes
@@ -170,11 +169,12 @@ export default class Loader extends EventEmitter {
 		});
 
 		const installer = await neoForge.downloadInstaller(LoaderData as any);
-		if (installer.error) return installer as LoaderResult;
+		if ('error' in installer) return installer as LoaderResult;
 
 		// Extract the main profile
 		const profile: any = await neoForge.extractProfile(installer.filePath);
 		if (profile.error) return profile;
+		if (!profile.install) return { error: 'Invalid neoForge profile' };
 
 		// Write version JSON
 		if ("version" in profile && "id" in profile.version) {
@@ -195,7 +195,8 @@ export default class Loader extends EventEmitter {
 		const patch: any = await neoForge.patchneoForge(profile.install, installer.oldAPI);
 		if (patch.error) return patch;
 
-		if ("version" in profile) return profile.version;
+		if ("version" in profile && profile.version) return profile.version;
+		return { error: 'Invalid neoForge profile' };
 	}
 
 	/**
@@ -218,7 +219,7 @@ export default class Loader extends EventEmitter {
 		const json = await fabric.downloadJson(LoaderData);
 		if (json.error) return json;
 
-		if ("id" in json) {
+		if ("id" in json && typeof json.id === 'string') {
 			const destination = path.resolve(this.options.path, 'versions', json.id);
 			if (!fs.existsSync(destination)) fs.mkdirSync(destination, { recursive: true });
 			fs.writeFileSync(path.resolve(destination, `${json.id}.json`), JSON.stringify(json, null, 4));
@@ -252,7 +253,7 @@ export default class Loader extends EventEmitter {
 		const json = await legacyFabric.downloadJson(LoaderData);
 		if (json.error) return json;
 
-		if ("id" in json) {
+		if ("id" in json && typeof json.id === 'string') {
 			const destination = path.resolve(this.options.path, 'versions', json.id);
 			if (!fs.existsSync(destination)) fs.mkdirSync(destination, { recursive: true });
 			fs.writeFileSync(path.resolve(destination, `${json.id}.json`), JSON.stringify(json, null, 4));

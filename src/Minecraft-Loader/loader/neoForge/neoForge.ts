@@ -33,11 +33,14 @@ interface NeoForgeOptions {
 	downloadFileMultiple?: number;
 }
 
-interface DownloadInstallerResult {
-	filePath?: string;
-	oldAPI?: boolean;
-	error?: string;
-}
+type DownloadInstallerResult =
+	| {
+		filePath: string;
+		oldAPI: boolean;
+	}
+	| {
+		error: string;
+	};
 
 interface NeoForgeProfile {
 	install?: ForgeInstallProfile;

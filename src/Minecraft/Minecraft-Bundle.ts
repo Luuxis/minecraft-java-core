@@ -42,11 +42,19 @@ export default class MinecraftBundle extends EventEmitter {
 		const toDownload: BundleItem[] = [];
 		const toHash: BundleItem[] = [];          // files that exist & need hash verification
 
-		let replaceName = `${this.options.path}/`;
+		// Always normalise paths to forward slashes so that comparisons work
+		// on Windows where `this.options.path` may contain backslashes while
+		// `file.path` is normalised below via path.resolve().replace(/\\/g, '/').
+		const basePath = this.options.path.replace(/\\/g, '/').replace(/\/+$/, '');
+		let replaceName = `${basePath}/`;
 		if (this.options.instance) {
-			replaceName = `${this.options.path}/instances/${this.options.instance}/`;
+			replaceName = `${basePath}/instances/${this.options.instance}/`;
 		}
-		const ignoredSet = new Set(this.options.ignored);
+		// Normalise ignored entries too: users may provide them with either
+		// '/' or '\' separators, with or without a leading slash.
+		const ignoredSet = new Set(
+			this.options.ignored.map(p => p.replace(/\\/g, '/').replace(/^\/+/, ''))
+		);
 
 		// ── Phase 1: synchronous fast-pass ─────────────────────────────
 		for (const file of bundle) {
@@ -142,29 +150,35 @@ export default class MinecraftBundle extends EventEmitter {
 	 * @param bundle Array of BundleItems representing valid files.
 	 */
 	public async checkFiles(bundle: BundleItem[]): Promise<void> {
+		// Normalise the base path so comparisons work consistently on Windows,
+		// where `this.options.path` may contain backslashes while bundle file
+		// paths have been normalised to forward slashes in checkBundle().
+		const basePath = this.options.path.replace(/\\/g, '/').replace(/\/+$/, '');
+
 		// If using instances, ensure the 'instances' directory exists
 		let instancePath = '';
 		if (this.options.instance) {
-			if (!fs.existsSync(`${this.options.path}/instances`)) {
-				fs.mkdirSync(`${this.options.path}/instances`, { recursive: true });
+			if (!fs.existsSync(`${basePath}/instances`)) {
+				fs.mkdirSync(`${basePath}/instances`, { recursive: true });
 			}
 			instancePath = `/instances/${this.options.instance}`;
 		}
 
 		// Gather all existing files in the relevant directory
 		const allFiles = this.options.instance
-			? this.getFiles(`${this.options.path}${instancePath}`)
-			: this.getFiles(this.options.path);
+			? this.getFiles(`${basePath}${instancePath}`)
+			: this.getFiles(basePath);
 
 		// Also gather files from "loader" and "runtime" directories to ignore
 		const ignoredFiles = [
-			...this.getFiles(`${this.options.path}/loader`),
-			...this.getFiles(`${this.options.path}/runtime`)
+			...this.getFiles(`${basePath}/loader`),
+			...this.getFiles(`${basePath}/runtime`)
 		];
 
 		// Convert custom ignored paths to actual file paths
 		for (let ignoredPath of this.options.ignored) {
-			ignoredPath = `${this.options.path}${instancePath}/${ignoredPath}`;
+			// Normalise user-provided ignored entries (accept '/' or '\')
+			ignoredPath = `${basePath}${instancePath}/${ignoredPath.replace(/\\/g, '/').replace(/^\/+/, '')}`;
 			if (fs.existsSync(ignoredPath)) {
 				if (fs.statSync(ignoredPath).isDirectory()) {
 					// If it's a directory, add all files within it
@@ -181,8 +195,11 @@ export default class MinecraftBundle extends EventEmitter {
 			ignoredFiles.push(file.path);
 		});
 
+		// Use a Set with normalised separators for O(1), separator-agnostic lookup
+		const ignoredSet = new Set(ignoredFiles.map(p => p.replace(/\\/g, '/')));
+
 		// Filter out all ignored files from the main file list
-		const filesToDelete = allFiles.filter(file => !ignoredFiles.includes(file));
+		const filesToDelete = allFiles.filter(file => !ignoredSet.has(file.replace(/\\/g, '/')));
 
 		// Remove each file or directory
 		for (const filePath of filesToDelete) {
@@ -196,12 +213,15 @@ export default class MinecraftBundle extends EventEmitter {
 					// Clean up empty folders going upward until we hit the main path
 					let currentDir = path.dirname(filePath);
 					while (true) {
-						if (currentDir === this.options.path) break;
+						const normalisedCurrent = currentDir.replace(/\\/g, '/').replace(/\/+$/, '');
+						if (normalisedCurrent === basePath) break;
 						const dirContents = fs.readdirSync(currentDir);
 						if (dirContents.length === 0) {
 							fs.rmSync(currentDir);
 						}
-						currentDir = path.dirname(currentDir);
+						const parent = path.dirname(currentDir);
+						if (parent === currentDir) break; // safety: hit filesystem root
+						currentDir = parent;
 					}
 				}
 			} catch {

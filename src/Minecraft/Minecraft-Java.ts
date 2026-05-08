@@ -130,6 +130,7 @@ export default class JavaDownloader extends EventEmitter {
 		const { platform, arch } = this.getPlatformArch();
 		const majorVersion = versionDownload || jsonversion.javaVersion?.majorVersion || 8;
 		const pathFolder = path.resolve(this.options.path, `runtime/jre-${majorVersion}`);
+		const javaType = this.options.java.type ? this.options.java.type : 'jre';
 
 		// Build the API query to fetch the Java version
 		const queryParams = new URLSearchParams({
@@ -137,7 +138,7 @@ export default class JavaDownloader extends EventEmitter {
 			os: platform,
 			arch: arch,
 			archive_type: 'zip',
-			java_package_type: this.options.java.type
+			java_package_type: javaType
 		});
 		const javaVersionURL = `https://api.azul.com/metadata/v1/zulu/packages/?${queryParams.toString()}`;
 		let javaVersions = await fetch(javaVersionURL).then(res => res.json());
@@ -148,10 +149,12 @@ export default class JavaDownloader extends EventEmitter {
 
 		let javaExePath = path.join(pathFolder, javaVersions.name.replace('.zip', ''), 'bin', 'java');
 		if (platform === 'macos') {
-			try {
-				const pathBin = fs.readFileSync(path.join(pathFolder, javaVersions.name.replace('.zip', ''), "bin"), 'utf8').toString();
+			let pathBin = path.join(pathFolder, javaVersions.name.replace('.zip', ''), "bin");
+			if (fs.existsSync(pathBin)) {
+				let pathBin = fs.readFileSync(path.join(pathFolder, javaVersions.name.replace('.zip', ''), "bin"), 'utf8').toString();
 				javaExePath = path.join(pathFolder, javaVersions.name.replace('.zip', ''), pathBin, 'java');
-			} catch (_) {
+			} else {
+				javaExePath = path.join(pathFolder, javaVersions.name.replace('.zip', ''), 'Contents', 'Home', 'bin', 'java');
 			}
 		}
 
@@ -177,7 +180,8 @@ export default class JavaDownloader extends EventEmitter {
 
 			if (platform === 'macos') {
 				try {
-					const pathBin = fs.readFileSync(path.join(pathFolder, javaVersions.name.replace('.zip', ''), "bin"), 'utf8').toString();
+					let pathBin = fs.readFileSync(path.join(pathFolder, javaVersions.name.replace('.zip', ''), "bin"), 'utf8').toString();
+					if (!fs.existsSync(pathBin)) pathBin = path.join(pathBin, 'Contents', 'Home', 'bin');
 					javaExePath = path.join(pathFolder, javaVersions.name.replace('.zip', ''), pathBin, 'java');
 				} catch (_) {
 				}

@@ -1,7 +1,10 @@
 {
     "name": "minecraft-java-core",
-    "version": "4.2.7",
+    "version": "4.2.8",
     "types": "./build/Index.d.ts",
+    "bin": {
+        "mjc-zip": "./build/Minecraft/Minecraft-resourceziper.js"
+    },
     "exports": {
         ".": {
             "import": "./build/esm/Index.js",

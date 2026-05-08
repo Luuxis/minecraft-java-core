@@ -28,56 +28,63 @@ import type {
 	DownloadFile,
 } from './types.js';
 
-export type LaunchOPTS = LaunchOptions;
+type LaunchInputOptions = Partial<Omit<LaunchOptions, 'authenticator' | 'loader' | 'java' | 'screen' | 'memory'>> & {
+	authenticator?: LaunchOptions['authenticator'] | null;
+	loader?: Partial<LaunchOptions['loader']>;
+	java?: Partial<LaunchOptions['java']> & { path?: string | null; version?: string | null };
+	screen?: Partial<LaunchOptions['screen']> & { width?: number | null; height?: number | null };
+	memory?: Partial<LaunchOptions['memory']>;
+};
+
+export type LaunchOPTS = LaunchInputOptions;
 
 export default class Launch extends EventEmitter {
-	options: LaunchOptions;
+	options!: LaunchOptions;
 
-	async Launch(opt: LaunchOptions) {
+	async Launch(opt: LaunchInputOptions = {}) {
 		const defaultOptions: LaunchOptions = {
-			url: null,
-			authenticator: null,
-			timeout: 10000,
-			path: '.Minecraft',
-			version: 'latest_release',
-			instance: null,
-			detached: false,
-			intelEnabledMac: false,
-			ignore_log4j: false,
-			downloadFileMultiple: 5,
-			bypassOffline: false,
+			url: opt.url ?? null,
+			authenticator: opt.authenticator,
+			timeout: opt.timeout ?? 10000,
+			path: opt.path ?? '.Minecraft',
+			version: opt.version ?? 'latest_release',
+			instance: opt.instance ?? null,
+			detached: opt.detached ?? false,
+			intelEnabledMac: opt.intelEnabledMac ?? false,
+			ignore_log4j: opt.ignore_log4j ?? false,
+			downloadFileMultiple: opt.downloadFileMultiple ?? 5,
+			bypassOffline: opt.bypassOffline ?? false,
 
 			loader: {
-				path: './loader',
-				type: null,
-				build: 'latest',
-				enable: false,
+				path: opt.loader?.path ?? './loader',
+				type: opt.loader?.type ?? null,
+				build: opt.loader?.build ?? 'latest',
+				enable: opt.loader?.enable ?? false,
 			},
 
-			mcp: null,
+			mcp: opt.mcp ?? null,
 
-			verify: false,
-			ignored: [],
-			JVM_ARGS: [],
-			GAME_ARGS: [],
+			verify: opt.verify ?? false,
+			ignored: opt.ignored ?? [],
+			JVM_ARGS: opt.JVM_ARGS ?? [],
+			GAME_ARGS: opt.GAME_ARGS ?? [],
 
 			java: {
-				path: null,
-				version: null,
-				type: 'jre',
+				path: opt.java?.path ?? null,
+				version: opt.java?.version ?? null,
+				type: opt.java?.type ?? 'jre',
 			},
 
 			screen: {
-				width: null,
-				height: null,
-				fullscreen: false,
+				width: opt.screen?.width ?? null,
+				height: opt.screen?.height ?? null,
+				fullscreen: opt.screen?.fullscreen ?? false,
 			},
 
 			memory: {
-				min: '1G',
-				max: '2G'
-			},
-			...opt,
+				min: opt.memory?.min ?? '1G',
+				max: opt.memory?.max ?? '2G'
+			}
 		} as LaunchOptions;
 
 		this.options = defaultOptions;
@@ -90,12 +97,11 @@ export default class Launch extends EventEmitter {
 
 		if (this.options.loader.type) {
 			this.options.loader.type = this.options.loader.type.toLowerCase()
-			this.options.loader.build = this.options.loader.build.toLowerCase()
+			this.options.loader.build = (this.options.loader.build ?? 'latest').toLowerCase()
 		}
 
 		if (!this.options.authenticator) return this.emit("error", { error: "Authenticator not found" });
-		if (this.options.downloadFileMultiple < 1) this.options.downloadFileMultiple = 1
-		if (this.options.downloadFileMultiple > 30) this.options.downloadFileMultiple = 30
+		this.options.downloadFileMultiple = Math.min(30, Math.max(1, this.options.downloadFileMultiple ?? 5));
 		if (typeof this.options.loader.path !== 'string') this.options.loader.path = `./loader/${this.options.loader.type}`;
 		if (this.options.java.version && typeof this.options.java.type !== 'string') this.options.java.type = 'jre';
 		this.start();
@@ -107,8 +113,9 @@ export default class Launch extends EventEmitter {
 		if (!data || 'error' in data) return this.emit('error', data);
 		let { minecraftJson, minecraftLoader, minecraftVersion, minecraftJava } = data;
 
-		let minecraftArguments: LaunchArguments | { error: string } = await new argumentsMinecraft(this.options).GetArguments(minecraftJson, minecraftLoader);
+		let minecraftArguments: LaunchArguments | { error: string } = await new argumentsMinecraft(this.options).GetArguments(minecraftJson, minecraftLoader ?? undefined);
 		if ('error' in minecraftArguments) return this.emit('error', minecraftArguments);
+		if (!minecraftArguments.mainClass) return this.emit('error', { error: 'Minecraft main class not found' });
 
 		let loaderArguments: LoaderArguments | { error: string } = await new loaderMinecraft(this.options).GetArguments(minecraftLoader, minecraftVersion);
 		if ('error' in loaderArguments) return this.emit('error', loaderArguments);
@@ -127,10 +134,14 @@ export default class Launch extends EventEmitter {
 		if (!fs.existsSync(logs)) fs.mkdirSync(logs, { recursive: true });
 
 		let argumentsLogs: string = Arguments.join(' ')
-		argumentsLogs = argumentsLogs.replaceAll(this.options.authenticator?.access_token, '????????')
-		argumentsLogs = argumentsLogs.replaceAll(this.options.authenticator?.client_token, '????????')
-		argumentsLogs = argumentsLogs.replaceAll(this.options.authenticator?.uuid, '????????')
-		argumentsLogs = argumentsLogs.replaceAll(this.options.authenticator?.xboxAccount?.xuid, '????????')
+		const hiddenValues = [
+			this.options.authenticator.access_token,
+			this.options.authenticator.client_token,
+			this.options.authenticator.uuid,
+			this.options.authenticator.xboxAccount?.xuid
+		].filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+		for (const value of hiddenValues) argumentsLogs = argumentsLogs.replaceAll(value, '????????')
 		argumentsLogs = argumentsLogs.replaceAll(`${this.options.path}/`, '')
 		this.emit('data', `Launching with arguments ${argumentsLogs}`);
 
@@ -166,7 +177,7 @@ export default class Launch extends EventEmitter {
 
 		const gameLibraries: DownloadFile[] = await libraries.Getlibraries(json);
 		const gameLogging: DownloadFile[] = await libraries.GetLogging();
-		const gameAssetsOther: DownloadFile[] = await libraries.GetAssetsOthers(this.options.url);
+		const gameAssetsOther: DownloadFile[] = await libraries.GetAssetsOthers(this.options.url ?? null);
 		const gameAssets: DownloadFile[] = await new assetsMinecraft(this.options).getAssets(json);
 		const gameJava: JavaDownloadResult = this.options.java.path ? { files: [], path: this.options.java.path } : await java.getJavaFiles(json);
 

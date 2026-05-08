@@ -83,6 +83,8 @@ export default class MinecraftArguments {
 		}
 
 		// Map of placeholders to actual values
+		const assetsIndexName = versionJson.assetIndex?.id ?? versionJson.assets ?? versionJson.id;
+
 		const placeholderMap: Record<string, string> = {
 			'${auth_access_token}': this.authenticator.access_token,
 			'${auth_session}': this.authenticator.access_token,
@@ -92,7 +94,7 @@ export default class MinecraftArguments {
 			'${user_properties}': this.authenticator.user_properties,
 			'${user_type}': userType,
 			'${version_name}': loaderJson ? loaderJson.id || versionJson.id : versionJson.id,
-			'${assets_index_name}': versionJson.assetIndex.id,
+			'${assets_index_name}': assetsIndexName,
 			'${game_directory}': this.options.instance
 				? `${this.options.path}/instances/${this.options.instance}`
 				: this.options.path,
@@ -349,7 +351,8 @@ export default class MinecraftArguments {
 			const key = `${basePath}/${parts.name.replace(`-${parts.version}`, '')}`;
 			const current = map.get(key);
 
-			const isSupportedVersion = semver.satisfies(semver.valid(semver.coerce(this.options.version)), '1.14.4 - 1.18.2');
+			const currentVersion = semver.valid(semver.coerce(this.options.version));
+			const isSupportedVersion = currentVersion ? semver.satisfies(currentVersion, '1.14.4 - 1.18.2') : false;
 			const isWindows = process.platform === 'win32';
 
 			if (!current || semver.gt(version, current.version) && (isSupportedVersion && isWindows)) {
