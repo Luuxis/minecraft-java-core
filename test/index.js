@@ -5,6 +5,8 @@ const ACCOUNT_FILE = './account.json';
 const API_URL = 'http://luuxcraft.fr/api/user/d7439d52-b6b9-4e9e-a920-2932e8afb2ee/instances';
 const INSTANCE_NAME = 'BestiMon';
 const DOWNLOAD_SIMULTANEOUS = 30;
+const JAVA_VERSION = "default"; // "default" for default system Java, or specify a version like "8", "11", etc.
+const JAVA_TYPE = "default"; // "default" for default system Java, or specify a type like "hotspot", "openj9", etc.
 const MINECRAFT_PATH = './minecraft';
 const MEMORY_CONFIG = { min: '14G', max: '16G' };
 
@@ -55,7 +57,9 @@ async function fetchInstanceData() {
 }
 
 function buildLaunchOptions(instanceData, account) {
-    const loaderType = instanceData.loader?.loader_type.toLowerCase() || instanceData.loadder.loadder_type.toLowerCase();
+    let loaderType = instanceData.loader?.loader_type.toLowerCase() || instanceData.loadder.loadder_type.toLowerCase();
+    const mcp = loaderType === 'mcp' ? instanceData.loader?.mcp_file : undefined;
+    if (loaderType === 'mcp') loaderType = 'none';
 
     return {
         url: instanceData.url,
@@ -67,6 +71,8 @@ function buildLaunchOptions(instanceData, account) {
         ignore_log4j: true,
         ignored: instanceData.ignored,
         downloadFileMultiple: DOWNLOAD_SIMULTANEOUS,
+        verify: instanceData.verify,
+        mcp: mcp,
         loader: {
             type: loaderType,
             build: instanceData.loader?.loader_version || instanceData.loadder.loadder_version,
@@ -76,7 +82,8 @@ function buildLaunchOptions(instanceData, account) {
         JVM_ARGS: [],
         memory: MEMORY_CONFIG,
         java: {
-            // version: 8
+            version: JAVA_VERSION == "default" ? undefined : JAVA_VERSION,
+            type: JAVA_TYPE == "default" ? undefined : JAVA_TYPE
         }
     };
 }

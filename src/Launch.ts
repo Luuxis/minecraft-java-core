@@ -141,14 +141,24 @@ export default class Launch extends EventEmitter {
 			this.options.authenticator.xboxAccount?.xuid
 		].filter((value): value is string => typeof value === 'string' && value.length > 0);
 
-		for (const value of hiddenValues) argumentsLogs = argumentsLogs.replaceAll(value, '????????')
-		argumentsLogs = argumentsLogs.replaceAll(`${this.options.path}/`, '')
+		for (const value of hiddenValues) argumentsLogs = argumentsLogs.replaceAll(value, '????????');
+		argumentsLogs = argumentsLogs.replaceAll(`${this.options.path}/`, '');
 		this.emit('data', `Launching with arguments ${argumentsLogs}`);
 
 		let minecraftDebug = spawn(java, Arguments, { cwd: logs, detached: this.options.detached })
-		minecraftDebug.stdout.on('data', (data) => this.emit('data', data.toString('utf-8')))
-		minecraftDebug.stderr.on('data', (data) => this.emit('data', data.toString('utf-8')))
-		minecraftDebug.on('close', (code) => this.emit('close', 'Minecraft closed'))
+		minecraftDebug.stdout.on('data', data => {
+			data = data.toString('utf-8');
+			for (const value of hiddenValues) data = data.replaceAll(value, '????????');
+			return this.emit('data', data);
+		})
+		minecraftDebug.stderr.on('data', data => {
+			data = data.toString('utf-8');
+			for (const value of hiddenValues) data = data.replaceAll(value, '????????');
+			return this.emit('data', data);
+		})
+		minecraftDebug.on('close', code => {
+			return this.emit('close', code);
+		})
 	}
 
 	async DownloadGame(): Promise<{ minecraftJson: MinecraftVersionJSON; minecraftLoader: LoaderJSON | null; minecraftVersion: string; minecraftJava: JavaDownloadResult } | void> {
